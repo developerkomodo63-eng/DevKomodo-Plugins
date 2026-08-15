@@ -49,7 +49,6 @@ public:
                 applyPreset (factoryPresets[(size_t) id - 2]);
         }
         presetBox.setTooltip ("Select a factory preset or MANUAL");
-;
         addAndMakeVisible (presetBox);
 
         if (apvts.getParameter ("INSTRUMENT") != nullptr)
@@ -293,7 +292,7 @@ private:
                 p = p.substring (0, 1).toUpperCase() + p.substring (1);
             parts.set (i, p);
         }
-        return parts.joinIntoString (' ');
+        return parts.joinIntoString (" ");
     }
 
 

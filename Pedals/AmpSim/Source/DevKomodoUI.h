@@ -301,7 +301,7 @@ private:
                 p = p.substring (0, 1).toUpperCase() + p.substring (1);
             parts.set (i, p);
         }
-        return parts.joinIntoString (' ');
+        return parts.joinIntoString (" ");
     }
 
     float defaultNormalised (juce::RangedAudioParameter& parameter) const

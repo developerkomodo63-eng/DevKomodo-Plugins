@@ -47,7 +47,7 @@ public:
             const int id = presetBox.getSelectedId();
             if (id >= 2 && id - 2 < (int) factoryPresets.size())
                 applyPreset (factoryPresets[(size_t) id - 2]);
-        }
+        };
         presetBox.setTooltip ("Select a factory preset or MANUAL");
         addAndMakeVisible (presetBox);
 

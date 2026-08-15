@@ -1,0 +1,85 @@
+name: Build DevKomodo Pedals VST3
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-windows-vst3:
+    name: Windows x64 VST3
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (MSVC x64)
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_CXX_STANDARD=17
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DCMAKE_CONFIGURATION_TYPES=Release
+
+      - name: Build all pedals (Release)
+        shell: pwsh
+        run: >-
+          cmake --build build --config Release --parallel
+          -- /m:4 /p:UseMultiToolTask=true /p:MultiProcessorCompilation=true
+
+      - name: Validate VST3 output
+        shell: pwsh
+        run: |
+          $expected = @(Get-ChildItem -Path "Pedals" -Directory | Where-Object { Test-Path (Join-Path $_.FullName "CMakeLists.txt") }).Count
+          $vst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Filter "*.vst3" -ErrorAction SilentlyContinue)
+
+          Write-Host "Expected plugin targets: $expected"
+          Write-Host "Found VST3 bundles: $($vst3.Count)"
+
+          if ($vst3.Count -ne $expected) {
+            Write-Error "VST3 count mismatch: expected $expected, found $($vst3.Count)."
+            exit 1
+          }
+
+          foreach ($plugin in $vst3) {
+            $binary = Get-ChildItem -Path $plugin.FullName -Recurse -File -Filter "*.vst3" |
+              Where-Object { $_.FullName -match "\\Contents\\x86_64-win\\" } |
+              Select-Object -First 1
+
+            if ($null -eq $binary) {
+              Write-Error "Invalid Windows VST3 bundle: $($plugin.FullName)"
+              exit 1
+            }
+          }
+
+          Write-Host "All VST3 bundles passed structural validation."
+
+      - name: Collect VST3 bundles
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "allvst3" | Out-Null
+          $vst3 = Get-ChildItem -Path "build" -Recurse -Directory -Filter "*.vst3"
+
+          foreach ($plugin in $vst3) {
+            $destination = Join-Path "allvst3" $plugin.Name
+            if (Test-Path $destination) {
+              Write-Error "Duplicate VST3 output name: $($plugin.Name)"
+              exit 1
+            }
+            Copy-Item -Path $plugin.FullName -Destination $destination -Recurse -Force
+          }
+
+          Get-ChildItem "allvst3" -Directory | Sort-Object Name | ForEach-Object {
+            Write-Host $_.FullName
+          }
+
+      - name: Upload Windows VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevKomodo-Pedals-Windows-VST3
+          path: allvst3
+          if-no-files-found: error
+          compression-level: 6

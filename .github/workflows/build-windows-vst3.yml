@@ -1,0 +1,48 @@
+name: Build Windows VST3
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # JUCE se descarga con FetchContent (ver CMakeLists.txt raiz), asi que
+      # no hace falta un checkout de submodulo aca. Si tu CMakeLists usa
+      # add_subdirectory(JUCE) con submodulo en vez de FetchContent, agrega:
+      #   with:
+      #     submodules: recursive
+      # en el paso de checkout de arriba.
+
+      - name: Configure CMake
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Locate built VST3 plugins
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          find build -type d -iname "*.vst3" -path "*Release*" -print
+
+      - name: Collect VST3 artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          find build -type d -iname "*.vst3" -path "*Release*" -exec cp -r {} artifacts/ \;
+
+      - name: Upload VST3 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevKomodo-VST3-Windows
+          path: artifacts/
+          if-no-files-found: error

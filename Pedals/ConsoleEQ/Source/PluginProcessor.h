@@ -38,6 +38,6 @@ public:
 
 private:
     double fs = 44100.0;
-    std::vector<std::vector<juce::dsp::IIR::Filter<float>>> lowFilters, midFilters, highFilters;
+    std::vector<std::unique_ptr<juce::dsp::IIR::Filter<float>>> lowFilters, midFilters, highFilters;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConsoleEQAudioProcessor)
 };

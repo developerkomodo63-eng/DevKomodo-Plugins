@@ -33,16 +33,23 @@ void ConsoleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     juce::ignoreUnused (samplesPerBlock);
     fs = sampleRate;
     const int numChannels = juce::jmax (1, getTotalNumOutputChannels());
-    lowFilters.assign ((size_t) numChannels, std::vector<juce::dsp::IIR::Filter<float>>(1));
-    midFilters.assign ((size_t) numChannels, std::vector<juce::dsp::IIR::Filter<float>>(1));
-    highFilters.assign ((size_t) numChannels, std::vector<juce::dsp::IIR::Filter<float>>(1));
+    lowFilters.clear();
+    midFilters.clear();
+    highFilters.clear();
+    lowFilters.reserve ((size_t) numChannels);
+    midFilters.reserve ((size_t) numChannels);
+    highFilters.reserve ((size_t) numChannels);
 
     juce::dsp::ProcessSpec spec { fs, (juce::uint32) samplesPerBlock, (juce::uint32) numChannels };
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        lowFilters[(size_t) ch][0].prepare (spec);
-        midFilters[(size_t) ch][0].prepare (spec);
-        highFilters[(size_t) ch][0].prepare (spec);
+        lowFilters.push_back (std::make_unique<juce::dsp::IIR::Filter<float>>());
+        midFilters.push_back (std::make_unique<juce::dsp::IIR::Filter<float>>());
+        highFilters.push_back (std::make_unique<juce::dsp::IIR::Filter<float>>());
+
+        lowFilters[(size_t) ch]->prepare (spec);
+        midFilters[(size_t) ch]->prepare (spec);
+        highFilters[(size_t) ch]->prepare (spec);
     }
 }
 
@@ -79,9 +86,9 @@ void ConsoleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        auto& lf = lowFilters[(size_t) ch][0];
-        auto& mf = midFilters[(size_t) ch][0];
-        auto& hf = highFilters[(size_t) ch][0];
+        auto& lf = *lowFilters[(size_t) ch];
+        auto& mf = *midFilters[(size_t) ch];
+        auto& hf = *highFilters[(size_t) ch];
 
         *lf.coefficients = *juce::dsp::IIR::Coefficients<float>::makeLowShelf (fs, lowF, 0.7f, juce::Decibels::decibelsToGain (lowDb));
         *mf.coefficients = *juce::dsp::IIR::Coefficients<float>::makePeakFilter (fs, midF, 1.0f, juce::Decibels::decibelsToGain (midDb));

@@ -10,7 +10,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SynthBassAudioProcessor::cre
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { "WAVEFORM", 1 }, "Waveform",
-        juce::StringArray { "Saw", "Square", "Triangle" }, 1));
+        juce::StringArray { "Sine", "Saw", "Square", "Triangle", "Pulse", "Soft Saw", "Super Saw", "Organ", "Custom" }, 1));
 
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID { "OCTAVE", 1 }, "Octave", -2, 2, 0));
@@ -22,6 +22,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout SynthBassAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "DETUNE", 1 }, "Detune",
         juce::NormalisableRange<float> { 0.0f, 50.0f }, 12.0f));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "TUNING", 1 }, "Reference Tuning",
+        juce::NormalisableRange<float> { 432.0f, 448.0f, 0.01f }, 440.0f));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "PITCHCORR", 1 }, "Pitch Correction",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.85f));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "PULSEWIDTH", 1 }, "Pulse Width",
+        juce::NormalisableRange<float> { 0.05f, 0.95f, 0.001f }, 0.50f));
+
+    for (const auto* id : { "H2", "H3", "H4", "H5" })
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { id, 1 }, id,
+            juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "SUBLEVEL", 1 }, "Sub Level", 0.0f, 1.0f, 0.5f));
@@ -75,6 +92,15 @@ void SynthBassAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     smoothedFreqValue = 220.0f;
     currentTargetFrequency = 220.0f;
     hasTrackedPitch = false;
+    pendingFrequency = 0.0f;
+    pendingMidiNote = -1;
+    pendingPitchFrames = 0;
+    invalidPitchFrames = 0;
+    synthGateState = 0.0f;
+    bassLowMonoState = 0.0f;
+    bassTransientState = 0.0f;
+    synthGateAttackCoeff = std::exp (-1.0f / (0.010f * (float) sampleRate));
+    synthGateReleaseCoeff = std::exp (-1.0f / (0.030f * (float) sampleRate));
 
     // ataque rapido (~5ms), release mas lento (~120ms), como un pedal real
     attackCoeff  = std::exp (-1.0f / (0.005f * (float) sampleRate));
@@ -123,6 +149,13 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const int octave      = (int) apvts.getRawParameterValue ("OCTAVE")->load();
     const float glideMs   = apvts.getRawParameterValue ("GLIDE")->load();
     const float detuneCts = apvts.getRawParameterValue ("DETUNE")->load();
+    const float tuningHz  = apvts.getRawParameterValue ("TUNING")->load();
+    const float pitchCorrection = apvts.getRawParameterValue ("PITCHCORR")->load();
+    const float pulseWidth = apvts.getRawParameterValue ("PULSEWIDTH")->load();
+    const float h2 = apvts.getRawParameterValue ("H2")->load();
+    const float h3 = apvts.getRawParameterValue ("H3")->load();
+    const float h4 = apvts.getRawParameterValue ("H4")->load();
+    const float h5 = apvts.getRawParameterValue ("H5")->load();
     const float subLevel  = apvts.getRawParameterValue ("SUBLEVEL")->load();
     const float gateDb    = apvts.getRawParameterValue ("GATE")->load();
     const float mix       = apvts.getRawParameterValue ("MIX")->load();
@@ -132,7 +165,13 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     oscillatorUnison.setWaveform (waveform);
     // el sub siempre suena mejor en cuadrada/senoidal (mas fundamental,
     // menos armonicos altos peleando con la nota principal)
-    oscillatorSub.setWaveform (1);
+    oscillatorSub.setWaveform (waveform == 8 ? 0 : 1);
+    oscillatorMain.setPulseWidth (pulseWidth);
+    oscillatorUnison.setPulseWidth (pulseWidth);
+    oscillatorSub.setPulseWidth (pulseWidth);
+    oscillatorMain.setCustomHarmonics (h2, h3, h4, h5);
+    oscillatorUnison.setCustomHarmonics (h2, h3, h4, h5);
+    oscillatorSub.setCustomHarmonics (h2, h3, h4, h5);
 
     const float detuneRatio = std::pow (2.0f, detuneCts / 1200.0f);
 
@@ -158,22 +197,42 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         if (pitchTracker.consumeNewPitch (newFreq, newRms))
         {
             detectedRms.store (newRms);
-
             if (newFreq > 0.0f)
             {
-                detectedFrequency.store (newFreq);
-                currentTargetFrequency = newFreq * octaveMultiplier;
-
-                // Lock the first valid note immediately; subsequent notes use
-                // the user-selected glide time. This avoids the synth starting
-                // from an arbitrary 220 Hz note on the first pluck.
-                if (! hasTrackedPitch)
+                invalidPitchFrames = 0;
+                const int candidateMidi = juce::jlimit (0, 127,
+                    (int) std::lround (69.0 + 12.0 * std::log2 (juce::jmax (newFreq, 1.0e-6f) / 440.0)));
+                const float noteHz = 440.0f * std::pow (2.0f, (candidateMidi - 69) / 12.0f);
+                const float cents = 1200.0f * std::log2 (juce::jmax (newFreq, 1.0e-6f) / juce::jmax (noteHz, 1.0e-6f));
+                if (pendingMidiNote == candidateMidi && std::abs (cents) < 90.0f)
+                { ++pendingPitchFrames; pendingFrequency = newFreq; }
+                else
+                { pendingMidiNote = candidateMidi; pendingPitchFrames = 1; pendingFrequency = newFreq; }
+                if (pendingPitchFrames >= 2)
                 {
-                    smoothedFreqValue = currentTargetFrequency;
-                    hasTrackedPitch = true;
+                    detectedFrequency.store (pendingFrequency);
+
+                    // The detector reports the measured string frequency.
+                    // For a synth this can feel slightly flat/sharp because
+                    // the fundamental of a picked string is not perfectly
+                    // stationary. Pull the synth toward the nearest equal-
+                    // temperament note using the user's reference pitch.
+                    const float midiRelative = 12.0f * std::log2 (
+                        juce::jmax (pendingFrequency, 1.0e-6f) / tuningHz);
+                    const float nearestSemitone = std::round (midiRelative);
+                    const float targetHz = tuningHz * std::pow (
+                        2.0f, nearestSemitone / 12.0f);
+                    const float correctedFrequency = pendingFrequency
+                        + (targetHz - pendingFrequency) * pitchCorrection;
+                    currentTargetFrequency = correctedFrequency * octaveMultiplier;
+                    if (! hasTrackedPitch)
+                    { smoothedFreqValue = currentTargetFrequency; hasTrackedPitch = true; }
                 }
             }
+            else ++invalidPitchFrames;
         }
+        if (invalidPitchFrames >= 3)
+            hasTrackedPitch = false;
 
         // seguidor de envolvente por muestra, para que el ataque/release
         // se sienta suave y no cuantizado al tamaño del hop del pitch tracker
@@ -195,7 +254,10 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                                + oscillatorUnison.getNextSample() * 0.7f
                                + oscillatorSub.getNextSample() * subLevel;
 
-        const float synthSample = voicesSum * envelopeState * gateAmount * 1.6f;
+        const float targetSynthGate = hasTrackedPitch ? 1.0f : 0.0f;
+        const float gateCoeff = targetSynthGate > synthGateState ? synthGateAttackCoeff : synthGateReleaseCoeff;
+        synthGateState = targetSynthGate + gateCoeff * (synthGateState - targetSynthGate);
+        const float synthSample = voicesSum * envelopeState * gateAmount * synthGateState * 1.6f;
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {

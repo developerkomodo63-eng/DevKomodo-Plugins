@@ -122,7 +122,7 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     const float driveBase = apvts.getRawParameterValue("DRIVE")->load();
     const float drive = bassMode ? driveBase * 0.72f : driveBase;
-    const float toneCutoff = bassMode ? juce::jmax (900.0f, apvts.getRawParameterValue("TONE")->load()) : apvts.getRawParameterValue("TONE")->load();
+    const float toneCutoff = bassMode ? juce::jmax (1000.0f, apvts.getRawParameterValue("TONE")->load()) : juce::jmax (1800.0f, apvts.getRawParameterValue("TONE")->load());
     const float character = apvts.getRawParameterValue("CHARACTER")->load();
     const float levelDb = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain(levelDb);

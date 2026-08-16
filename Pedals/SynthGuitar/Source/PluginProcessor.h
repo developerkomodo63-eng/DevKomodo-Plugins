@@ -65,7 +65,20 @@ private:
     float currentTargetFrequency = 220.0f;
     bool hasTrackedPitch = false;
 
+    float pendingFrequency = 0.0f;
+    int pendingMidiNote = -1;
+    int pendingPitchFrames = 0;
+    int invalidPitchFrames = 0;
+    float synthGateState = 0.0f;
+    float synthGateAttackCoeff = 0.0f;
+    float synthGateReleaseCoeff = 0.0f;
+
     std::atomic<float> detectedFrequency { 0.0f };
+    // Guitar profile: tighter low end, controlled stereo spread and
+    // a short transient mask to avoid pick/attack-triggered phase smear.
+    float guitarLowCutState = 0.0f;
+    float guitarTransientState = 0.0f;
+
     std::atomic<float> detectedRms { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthGuitarAudioProcessor)

@@ -113,7 +113,8 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float width        = apvts.getRawParameterValue ("WIDTH")->load();
     const float feedback     = apvts.getRawParameterValue ("FEEDBACK")->load();
     const float mixBase       = apvts.getRawParameterValue ("MIX")->load();
-    const float mix          = bassMode ? juce::jmin (mixBase, 0.55f) : mixBase;
+    const float mix          = bassMode ? juce::jmin (mixBase, 0.45f) : mixBase;
+    const float effectiveWidth = bassMode ? 0.0f : width;
 
     const int numVoices = voicesChoice + 1; // choice 0..2 -> 1,2,3
     const float phaseInc = rateHz / (float) sampleRate;
@@ -133,7 +134,7 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
             // desfasa el LFO del canal derecho, asi las voces se mueven
             // distinto entre L y R y el chorus se siente ancho de verdad
-            const float channelPhaseOffset = (channel == 1) ? width * 0.25f : 0.0f;
+            const float channelPhaseOffset = (channel == 1) ? effectiveWidth * 0.25f : 0.0f;
 
             float wetSum = 0.0f;
             for (int v = 0; v < numVoices; ++v)

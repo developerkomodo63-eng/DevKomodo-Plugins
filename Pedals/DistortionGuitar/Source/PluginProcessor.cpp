@@ -139,10 +139,10 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
     const float driveBase  = apvts.getRawParameterValue("DRIVE")->load();
     const float drive      = bassMode ? driveBase * 0.62f : driveBase;
     const float scoopBase  = apvts.getRawParameterValue("SCOOP")->load();
-    const float scoop      = bassMode ? scoopBase * 0.25f : scoopBase;
+    const float scoop      = bassMode ? scoopBase * 0.08f : scoopBase * 1.10f;
     const float biasBase   = apvts.getRawParameterValue("BIAS")->load();
     const float bias       = bassMode ? biasBase * 0.7f : biasBase;
-    const float toneCutoff = bassMode ? juce::jmax (900.0f, apvts.getRawParameterValue("TONE")->load()) : apvts.getRawParameterValue("TONE")->load();
+    const float toneCutoff = bassMode ? juce::jmax (1100.0f, apvts.getRawParameterValue("TONE")->load()) : juce::jmax (1800.0f, apvts.getRawParameterValue("TONE")->load());
     const float mix        = apvts.getRawParameterValue("MIX")->load();
     const float levelDb    = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain(levelDb);

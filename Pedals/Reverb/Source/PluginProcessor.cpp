@@ -184,9 +184,11 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float mix = apvts.getRawParameterValue ("MIX")->load();
-    const float bassWetCut = bassMode ? 500.0f : 20.0f;
-    const float shimmer = apvts.getRawParameterValue ("SHIMMER")->load();
+    const float mixBase = apvts.getRawParameterValue ("MIX")->load();
+    const float mix = bassMode ? juce::jmin (mixBase, 0.35f) : mixBase;
+    const float bassWetCut = bassMode ? 650.0f : 20.0f;
+    const float shimmerBase = apvts.getRawParameterValue ("SHIMMER")->load();
+    const float shimmer = bassMode ? shimmerBase * 0.35f : shimmerBase;
     const bool freeze = apvts.getRawParameterValue ("FREEZE")->load() > 0.5f;
 
     const int type = (int) apvts.getRawParameterValue ("TYPE")->load();
@@ -198,6 +200,8 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // rango/caracter tipico distinto sobre el mismo motor Freeverb, en vez
     // de necesitar tres algoritmos separados
     float mappedSize = rawSize, mappedDamping = rawDamping, mappedWidth = rawWidth;
+    if (bassMode)
+        mappedWidth *= 0.45f;
     switch (type)
     {
         case 1: // Hall: siempre grande, mas brillante (menos damping)

@@ -140,11 +140,11 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
     const float fuzzAmountBase = apvts.getRawParameterValue("FUZZ")->load();
-    const float fuzzAmount = bassMode ? fuzzAmountBase * 0.78f : fuzzAmountBase;
+    const float fuzzAmount = bassMode ? fuzzAmountBase * 0.68f : fuzzAmountBase * 1.05f;
     const float driveBase   = apvts.getRawParameterValue("DRIVE")->load();
     const float drive       = bassMode ? driveBase * 0.58f : driveBase;
     const float bias        = apvts.getRawParameterValue("BIAS")->load();
-    const float toneCutoff  = bassMode ? juce::jmax (900.0f, apvts.getRawParameterValue("TONE")->load()) : apvts.getRawParameterValue("TONE")->load();
+    const float toneCutoff  = bassMode ? juce::jmax (1000.0f, apvts.getRawParameterValue("TONE")->load()) : juce::jmax (1800.0f, apvts.getRawParameterValue("TONE")->load());
     const float mix         = apvts.getRawParameterValue("MIX")->load();
     const float levelDb     = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain  = juce::Decibels::decibelsToGain(levelDb);

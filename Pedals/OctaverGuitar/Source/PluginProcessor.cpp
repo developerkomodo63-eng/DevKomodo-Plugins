@@ -109,10 +109,10 @@ void OctaverAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
     const float sub1LevelBase = apvts.getRawParameterValue ("SUB1")->load();
-    const float sub1Level = bassMode ? juce::jmin (sub1LevelBase, 0.8f) : sub1LevelBase;
+    const float sub1Level = bassMode ? juce::jmin (sub1LevelBase * 1.10f, 0.95f) : sub1LevelBase * 0.85f;
     const float sub2Level = apvts.getRawParameterValue ("SUB2")->load();
     const float upLevelBase   = apvts.getRawParameterValue ("UP")->load();
-    const float upLevel   = bassMode ? upLevelBase * 0.45f : upLevelBase;
+    const float upLevel   = bassMode ? upLevelBase * 0.10f : upLevelBase * 1.05f;
     const float dryLevel  = apvts.getRawParameterValue ("DRY")->load();
     const float levelDb   = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);

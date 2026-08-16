@@ -212,8 +212,12 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         { 55.0f,  3500.0f, 1800.0f },  // Bass 4x10
         { 20.0f,  18000.0f, 8000.0f }  // Direct / No Cab (practicamente sin colorear)
     };
-    const auto& cab = cabs[(size_t) juce::jlimit (0, 5, cabChoice)];
-    hpFilter.setCutoffFrequency (bassMode ? 22.0f : (cabChoice >= 3 ? 22.0f : 55.0f));
+    const int effectiveCabChoice =
+        (cabChoice == 5) ? 5
+        : bassMode ? (cabChoice < 3 ? cabChoice + 3 : cabChoice)
+                   : (cabChoice >= 3 ? cabChoice - 3 : cabChoice);
+    const auto& cab = cabs[(size_t) juce::jlimit (0, 5, effectiveCabChoice)];
+    hpFilter.setCutoffFrequency (bassMode ? 22.0f : 55.0f);
 
     auto bassCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (
         currentSampleRate, 120.0f, 0.7f, juce::Decibels::decibelsToGain (bassDb));

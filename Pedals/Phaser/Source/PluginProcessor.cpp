@@ -102,7 +102,8 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float depthBase  = apvts.getRawParameterValue ("DEPTH")->load();
     const float depth      = bassMode ? depthBase * 0.6f : depthBase;
     const int stagesChoice = (int) apvts.getRawParameterValue ("STAGES")->load();
-    const float feedback   = apvts.getRawParameterValue ("FEEDBACK")->load();
+    const float feedbackBase = apvts.getRawParameterValue ("FEEDBACK")->load();
+    const float feedback   = bassMode ? feedbackBase * 0.45f : feedbackBase;
     const float mixBase     = apvts.getRawParameterValue ("MIX")->load();
     const float mix        = bassMode ? juce::jmin (mixBase, 0.6f) : mixBase;
 

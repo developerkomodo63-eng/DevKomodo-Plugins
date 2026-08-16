@@ -65,7 +65,20 @@ private:
     float currentTargetFrequency = 220.0f;
     bool hasTrackedPitch = false;
 
+    float pendingFrequency = 0.0f;
+    int pendingMidiNote = -1;
+    int pendingPitchFrames = 0;
+    int invalidPitchFrames = 0;
+    float synthGateState = 0.0f;
+    float synthGateAttackCoeff = 0.0f;
+    float synthGateReleaseCoeff = 0.0f;
+
     std::atomic<float> detectedFrequency { 0.0f };
+    // Bass profile: mono-compatible sub/low end and conservative
+    // harmonic spread to prevent low-frequency phase cancellation.
+    float bassLowMonoState = 0.0f;
+    float bassTransientState = 0.0f;
+
     std::atomic<float> detectedRms { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthBassAudioProcessor)

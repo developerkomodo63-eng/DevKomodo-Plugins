@@ -434,6 +434,16 @@ private:
     }
 
 
+    juce::AudioProcessorParameter* findParameterById (const juce::String& id) const
+    {
+        for (auto* parameter : processorRef.getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+                if (ranged->paramID == id)
+                    return ranged;
+
+        return nullptr;
+    }
+
     float defaultNormalised (juce::RangedAudioParameter& parameter) const
     {
         return juce::jlimit (0.0f, 1.0f, parameter.getDefaultValue());
@@ -522,7 +532,7 @@ private:
             {
                 for (auto& [parameterId, normalised] : p.values)
                     if (parameterId == id)
-                        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (processorRef.getParameter (id)))
+                        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (findParameterById (id)))
                             normalised = parameter->getNormalisableRange().convertTo0to1 (actualValue);
             };
 
@@ -559,7 +569,7 @@ private:
                     { 8.0f, 4.0f, 4.5f, 5.0f, 7.0f, 7.0f, 5.0f } };
                 const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
                 setPresetValue ("GAIN", v[0]);
-                if (auto* voice = processorRef.getParameter ("VOICE"))
+                if (auto* voice = findParameterById ("VOICE"))
                     if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (voice))
                         for (auto& [id, normalised] : p.values) if (id == "VOICE") normalised = choice->convertTo0to1 ((int) v[1]);
                 setPresetValue ("BASS", v[2]); setPresetValue ("MID", v[3]); setPresetValue ("TREBLE", v[4]);

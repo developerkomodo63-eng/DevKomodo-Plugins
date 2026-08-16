@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include "DevKomodoUI.h"
+
 #include "../../Common/fast_tanh.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout CleanUpProAudioProcessor::createParameterLayout()
@@ -96,6 +98,11 @@ void CleanUpProAudioProcessor::setStateInformation (const void* data, int sizeIn
     if (xmlState.get() != nullptr)
         if (xmlState->hasTagName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* CleanUpProAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new CleanUpProAudioProcessor(); }

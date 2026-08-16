@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include "DevKomodoUI.h"
+
 
 juce::AudioProcessorValueTreeState::ParameterLayout ConsoleEQAudioProcessor::createParameterLayout()
 {
@@ -113,6 +115,11 @@ void ConsoleEQAudioProcessor::setStateInformation (const void* data, int sizeInB
     if (xmlState.get() != nullptr)
         if (xmlState->hasTagName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* ConsoleEQAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ConsoleEQAudioProcessor(); }

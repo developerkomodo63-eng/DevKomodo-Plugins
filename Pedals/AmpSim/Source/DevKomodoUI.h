@@ -25,7 +25,7 @@ public:
         setResizeLimits (560, 330, 1180, 760);
         setSize (760, 470);
 
-        title.setText (name.toUpperCase(), juce::dontSendNotification);
+        title.setText (name.isNotEmpty() ? name.toUpperCase() : "DEVKOMODO", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
         title.setColour (juce::Label::textColourId, juce::Colours::white);
         title.setJustificationType (juce::Justification::centredLeft);
@@ -131,7 +131,9 @@ public:
                 k.slider = std::make_unique<juce::Slider> (juce::Slider::RotaryHorizontalVerticalDrag,
                                                             juce::Slider::TextBoxBelow);
                 k.slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 86, 20);
-                k.slider->setTooltip (ranged->name);
+                k.slider->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                k.slider->setScrollWheelEnabled (false);
+                k.slider->setMouseDragSensitivity (140);
                 k.slider->setDoubleClickReturnValue (true,
                     ranged->getNormalisableRange().convertFrom0to1 (ranged->getDefaultValue()));
                 k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
@@ -152,7 +154,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour::fromRGB (13, 14, 18));
+        g.fillAll (juce::Colour::fromRGB (9, 10, 13));
 
         auto outer = getLocalBounds().toFloat().reduced (14.0f);
         g.setColour (juce::Colour::fromRGB (27, 29, 35));
@@ -187,60 +189,66 @@ public:
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced (26, 18);
-        auto header = area.removeFromTop (48);
+        auto bounds = getLocalBounds().reduced (18, 14);
+        auto header = bounds.removeFromTop (62);
 
-        title.setBounds (header.removeFromLeft (260));
-        brand.setBounds (header.removeFromRight (95));
+        // Header: title, brand, preset and optional instrument selector.
+        title.setBounds (header.removeFromLeft (juce::jmax (180, header.getWidth() / 3)));
         if (instrumentButton.isVisible())
-            instrumentButton.setBounds (header.removeFromRight (112).reduced (3, 8));
-        presetBox.setBounds (header.removeFromRight (165).reduced (3, 8));
+            instrumentButton.setBounds (header.removeFromRight (108).reduced (3, 10));
+        presetBox.setBounds (header.removeFromRight (170).reduced (3, 10));
+        brand.setBounds (header.removeFromRight (92));
 
-        area.removeFromTop (36);
-        area.reduce (4, 5);
+        bounds.removeFromTop (12);
+        auto footer = bounds.removeFromBottom (30);
+        bounds.removeFromBottom (8);
 
-        std::vector<juce::Component*> components;
+        std::vector<juce::Component*> controls;
         std::vector<juce::Component*> labels;
-        components.reserve (knobs.size() + choices.size());
+        controls.reserve (knobs.size() + choices.size());
         labels.reserve (knobs.size() + choices.size());
 
         for (auto& k : knobs)
         {
-            components.push_back (k.slider.get());
+            controls.push_back (k.slider.get());
             labels.push_back (k.label.get());
         }
         for (auto& c : choices)
         {
-            components.push_back (c.box.get());
+            controls.push_back (c.box.get());
             labels.push_back (c.label.get());
         }
 
-        const int count = (int) components.size();
-        const int columns = juce::jmax (1, count <= 4 ? count : 4);
-        const int rows = juce::jmax (1, (count + columns - 1) / columns);
-        const int cellW = juce::jmax (1, area.getWidth() / columns);
-        const int cellH = juce::jmax (92, area.getHeight() / rows);
-
-        for (int i = 0; i < count; ++i)
+        const int count = (int) controls.size();
+        if (count > 0)
         {
-            const int row = i / columns;
-            const int col = i % columns;
-            auto cell = juce::Rectangle<int> (area.getX() + col * cellW,
-                                               area.getY() + row * cellH,
-                                               cellW, cellH);
-            auto labelArea = cell.removeFromTop (19);
-            labels[(size_t) i]->setBounds (labelArea.reduced (5, 0));
-            components[(size_t) i]->setBounds (cell.reduced (9, 2));
+            const int columns = count <= 3 ? count : (count <= 6 ? 3 : 4);
+            const int rows = (count + columns - 1) / columns;
+            const int gap = 8;
+            const int cellW = juce::jmax (100, (bounds.getWidth() - gap * (columns - 1)) / columns);
+            const int cellH = juce::jmax (94, (bounds.getHeight() - gap * (rows - 1)) / rows);
+
+            for (int i = 0; i < count; ++i)
+            {
+                const int row = i / columns;
+                const int col = i % columns;
+                auto cell = juce::Rectangle<int> (bounds.getX() + col * (cellW + gap),
+                                                   bounds.getY() + row * (cellH + gap),
+                                                   cellW, cellH);
+                auto labelArea = cell.removeFromTop (20);
+                labels[(size_t) i]->setBounds (labelArea.reduced (3, 0));
+                controls[(size_t) i]->setBounds (cell.reduced (6, 2));
+            }
         }
 
         if (! toggles.empty())
         {
-            auto toggleArea = getLocalBounds().removeFromBottom (34).reduced (28, 4);
-            const int w = juce::jmax (1, toggleArea.getWidth() / (int) toggles.size());
+            const int w = juce::jmax (90, footer.getWidth() / (int) toggles.size());
             for (auto& t : toggles)
-                t.button->setBounds (toggleArea.removeFromLeft (w).reduced (3, 0));
+                t.button->setBounds (footer.removeFromLeft (w).reduced (3, 2));
         }
     }
+
 
 private:
     void timerCallback() override

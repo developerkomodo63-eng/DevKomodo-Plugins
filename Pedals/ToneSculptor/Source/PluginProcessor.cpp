@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include "DevKomodoUI.h"
+
 #include "../../Common/fast_tanh.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout ToneSculptorAudioProcessor::createParameterLayout()
@@ -94,6 +96,11 @@ void ToneSculptorAudioProcessor::setStateInformation (const void* data, int size
     if (xmlState.get() != nullptr)
         if (xmlState->hasTagName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* ToneSculptorAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ToneSculptorAudioProcessor(); }

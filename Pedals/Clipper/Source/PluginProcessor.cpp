@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include "DevKomodoUI.h"
+
 
 juce::AudioProcessorValueTreeState::ParameterLayout ClipperAudioProcessor::createParameterLayout()
 {
@@ -86,6 +88,11 @@ void ClipperAudioProcessor::setStateInformation (const void* data, int sizeInByt
     if (xmlState.get() != nullptr)
         if (xmlState->hasTagName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* ClipperAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ClipperAudioProcessor(); }

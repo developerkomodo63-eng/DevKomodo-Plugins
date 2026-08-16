@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include "DevKomodoUI.h"
+
 #include "../../Common/fast_tanh.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout LimiterAudioProcessor::createParameterLayout()
@@ -89,6 +91,11 @@ void LimiterAudioProcessor::setStateInformation (const void* data, int sizeInByt
     if (xmlState.get() != nullptr)
         if (xmlState->hasTagName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* LimiterAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new LimiterAudioProcessor(); }

@@ -79,7 +79,7 @@ void UtilityGainAudioProcessor::setStateInformation (const void* data, int sizeI
 
 juce::AudioProcessorEditor* UtilityGainAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (160, 170, 182));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new UtilityGainAudioProcessor(); }

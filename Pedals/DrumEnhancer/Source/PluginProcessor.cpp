@@ -143,7 +143,7 @@ void DrumEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 juce::AudioProcessorEditor* DrumEnhancerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 159, 109));
 }
 
 void DrumEnhancerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

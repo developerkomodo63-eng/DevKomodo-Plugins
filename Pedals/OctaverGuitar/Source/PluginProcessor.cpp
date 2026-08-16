@@ -167,7 +167,7 @@ void OctaverAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* OctaverAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 130, 180));
 }
 
 void OctaverAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

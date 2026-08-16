@@ -172,7 +172,7 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
 juce::AudioProcessorEditor* ChorusAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (151, 111, 255));
 }
 
 void ChorusAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

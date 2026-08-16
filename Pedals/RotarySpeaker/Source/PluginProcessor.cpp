@@ -148,7 +148,7 @@ void RotarySpeakerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
 juce::AudioProcessorEditor* RotarySpeakerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (155, 115, 220));
 }
 
 void RotarySpeakerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

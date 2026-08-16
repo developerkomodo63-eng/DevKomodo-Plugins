@@ -163,7 +163,7 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 juce::AudioProcessorEditor* TapeDelayAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (94, 201, 188));
 }
 
 void TapeDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

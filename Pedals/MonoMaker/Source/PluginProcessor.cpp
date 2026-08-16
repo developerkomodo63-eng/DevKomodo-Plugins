@@ -108,7 +108,7 @@ void MonoMakerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 juce::AudioProcessorEditor* MonoMakerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (140, 152, 166));
 }
 
 void MonoMakerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

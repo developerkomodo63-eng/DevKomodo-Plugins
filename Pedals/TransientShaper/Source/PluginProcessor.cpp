@@ -119,7 +119,7 @@ void TransientShaperAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
 
 juce::AudioProcessorEditor* TransientShaperAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (100, 170, 250));
 }
 
 void TransientShaperAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

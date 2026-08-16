@@ -137,7 +137,7 @@ void FlangerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* FlangerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (123, 97, 255));
 }
 
 void FlangerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -126,7 +126,7 @@ void BroadcastCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
 
 juce::AudioProcessorEditor* BroadcastCompressorAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (72, 144, 222));
 }
 
 void BroadcastCompressorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -154,7 +154,7 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
 juce::AudioProcessorEditor* PhaserAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (170, 120, 255));
 }
 
 void PhaserAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

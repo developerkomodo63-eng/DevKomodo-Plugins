@@ -119,7 +119,7 @@ void ConsoleEQAudioProcessor::setStateInformation (const void* data, int sizeInB
 
 juce::AudioProcessorEditor* ConsoleEQAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (250, 204, 100));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ConsoleEQAudioProcessor(); }

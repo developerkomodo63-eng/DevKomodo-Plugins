@@ -137,7 +137,7 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
 juce::AudioProcessorEditor* PreampAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 176, 59));
 }
 
 void PreampAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -298,7 +298,7 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
 juce::AudioProcessorEditor* ReverbAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (69, 214, 197));
 }
 
 void ReverbAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

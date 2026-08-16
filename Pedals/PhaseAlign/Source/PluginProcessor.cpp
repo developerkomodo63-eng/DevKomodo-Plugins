@@ -136,7 +136,7 @@ void PhaseAlignAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
 juce::AudioProcessorEditor* PhaseAlignAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (222, 176, 90));
 }
 
 void PhaseAlignAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

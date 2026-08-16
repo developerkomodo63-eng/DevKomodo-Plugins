@@ -264,6 +264,7 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // filtro algoritmico de siempre
     if (cabIRLoaded)
     {
+        juce::dsp::AudioBlock<float> block (buffer);
         juce::dsp::ProcessContextReplacing<float> cabContext (block);
         cabConvolution.process (cabContext);
     }

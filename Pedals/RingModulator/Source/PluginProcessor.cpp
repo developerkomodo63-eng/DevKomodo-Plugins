@@ -100,7 +100,7 @@ void RingModulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
 juce::AudioProcessorEditor* RingModulatorAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (111, 91, 255));
 }
 
 void RingModulatorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

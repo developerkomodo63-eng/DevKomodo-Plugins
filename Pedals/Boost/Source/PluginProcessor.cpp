@@ -103,7 +103,7 @@ void BoostAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
 juce::AudioProcessorEditor* BoostAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 159, 67));
 }
 
 void BoostAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

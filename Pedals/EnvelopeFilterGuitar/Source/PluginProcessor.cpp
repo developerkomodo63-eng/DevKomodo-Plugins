@@ -153,7 +153,7 @@ void EnvelopeFilterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
 juce::AudioProcessorEditor* EnvelopeFilterAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (120, 200, 150));
 }
 
 void EnvelopeFilterAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

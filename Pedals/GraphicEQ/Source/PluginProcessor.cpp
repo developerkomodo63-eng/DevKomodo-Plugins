@@ -125,7 +125,7 @@ void GraphicEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 juce::AudioProcessorEditor* GraphicEQAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (232, 180, 64));
 }
 
 void GraphicEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

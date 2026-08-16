@@ -198,7 +198,7 @@ void GranulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
 juce::AudioProcessorEditor* GranulatorAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (214, 84, 178));
 }
 
 void GranulatorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

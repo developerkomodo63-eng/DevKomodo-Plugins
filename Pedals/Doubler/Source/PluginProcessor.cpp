@@ -148,7 +148,7 @@ void DoublerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* DoublerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (142, 120, 245));
 }
 
 void DoublerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -3,7 +3,7 @@
 ConvolutionReverbAudioProcessorEditor::ConvolutionReverbAudioProcessorEditor (ConvolutionReverbAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    editor = std::make_unique<DevKomodoUniversalEditor> (p, p.apvts, JucePlugin_Name);
+    editor = std::make_unique<DevKomodoUniversalEditor> (p, p.apvts, JucePlugin_Name, juce::Colour::fromRGB (45, 180, 196));
 
     addAndMakeVisible (loadButton);
     addAndMakeVisible (fileLabel);

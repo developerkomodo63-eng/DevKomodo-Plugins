@@ -116,7 +116,7 @@ void NoiseGateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 juce::AudioProcessorEditor* NoiseGateAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (90, 180, 255));
 }
 
 void NoiseGateAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

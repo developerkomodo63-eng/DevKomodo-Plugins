@@ -115,7 +115,7 @@ void AirEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 
 juce::AudioProcessorEditor* AirEnhancerAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 214, 128));
 }
 
 void AirEnhancerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

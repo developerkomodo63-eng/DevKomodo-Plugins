@@ -93,7 +93,7 @@ void SaturatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         for(int s=0;s<n;++s) d[s]=(dry[s]*dryGain + d[s]*mix)*outGain;
     }
 }
-juce::AudioProcessorEditor* SaturatorAudioProcessor::createEditor(){ return new DevKomodoUniversalEditor(*this,apvts,JucePlugin_Name); }
+juce::AudioProcessorEditor* SaturatorAudioProcessor::createEditor(){ return new DevKomodoUniversalEditor(*this,apvts,JucePlugin_Name, juce::Colour::fromRGB (235, 110, 64)); }
 void SaturatorAudioProcessor::getStateInformation(juce::MemoryBlock& dest){ auto st=apvts.copyState(); auto xml=st.createXml(); copyXmlToBinary(*xml,dest); }
 void SaturatorAudioProcessor::setStateInformation(const void* data,int size){ std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data,size)); if(xml && xml->hasTagName(apvts.state.getType())) apvts.replaceState(juce::ValueTree::fromXml(*xml)); }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){ return new SaturatorAudioProcessor(); }

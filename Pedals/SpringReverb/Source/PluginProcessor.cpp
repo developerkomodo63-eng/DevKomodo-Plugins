@@ -198,7 +198,7 @@ void SpringReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 juce::AudioProcessorEditor* SpringReverbAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (58, 196, 180));
 }
 
 void SpringReverbAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

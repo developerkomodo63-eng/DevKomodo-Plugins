@@ -116,7 +116,7 @@ void ExciterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* ExciterAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (240, 190, 72));
 }
 
 void ExciterAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

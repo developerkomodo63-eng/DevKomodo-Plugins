@@ -202,7 +202,7 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
 
 juce::AudioProcessorEditor* DistortionGuitarAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 87, 51));
 }
 
 void DistortionGuitarAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

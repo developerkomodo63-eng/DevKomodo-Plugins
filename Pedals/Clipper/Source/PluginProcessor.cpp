@@ -92,7 +92,7 @@ void ClipperAudioProcessor::setStateInformation (const void* data, int sizeInByt
 
 juce::AudioProcessorEditor* ClipperAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 107, 53));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ClipperAudioProcessor(); }

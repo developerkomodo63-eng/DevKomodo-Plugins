@@ -121,7 +121,7 @@ void BitcrusherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
 juce::AudioProcessorEditor* BitcrusherAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (198, 70, 150));
 }
 
 void BitcrusherAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

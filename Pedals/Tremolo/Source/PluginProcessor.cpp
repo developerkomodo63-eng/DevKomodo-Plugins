@@ -128,7 +128,7 @@ void TremoloAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* TremoloAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (138, 101, 235));
 }
 
 void TremoloAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

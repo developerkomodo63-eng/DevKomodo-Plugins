@@ -190,7 +190,7 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
 juce::AudioProcessorEditor* FuzzGuitarAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (214, 69, 65));
 }
 
 void FuzzGuitarAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -121,7 +121,7 @@ void AutoSwellAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 juce::AudioProcessorEditor* AutoSwellAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (188, 150, 255));
 }
 
 void AutoSwellAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -144,7 +144,7 @@ void ToneSculptorAudioProcessor::setStateInformation (const void* data, int size
 
 juce::AudioProcessorEditor* ToneSculptorAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (247, 168, 79));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new ToneSculptorAudioProcessor(); }

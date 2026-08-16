@@ -85,9 +85,9 @@ private:
         if (percent)
         {
             slider.setNumDecimalPlacesToDisplay (0);
-            slider.setTextFromValueFunction = [] (double value)
+            slider.textFromValueFunction = [] (double value)
             { return juce::String (juce::roundToInt ((float) value * 100.0f)) + "%"; };
-            slider.setValueFromTextFunction = [] (const juce::String& text)
+            slider.valueFromTextFunction = [] (const juce::String& text)
             { return text.trimCharactersAtEnd ("% ").getDoubleValue() * 0.01; };
         }
         slider.setName(id);

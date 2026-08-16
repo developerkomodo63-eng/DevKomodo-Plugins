@@ -95,7 +95,7 @@ void LimiterAudioProcessor::setStateInformation (const void* data, int sizeInByt
 
 juce::AudioProcessorEditor* LimiterAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (54, 130, 235));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new LimiterAudioProcessor(); }

@@ -148,7 +148,7 @@ void DeesserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* DeesserAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (79, 150, 240));
 }
 
 void DeesserAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

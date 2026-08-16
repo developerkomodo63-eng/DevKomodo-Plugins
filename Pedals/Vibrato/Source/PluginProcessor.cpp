@@ -129,7 +129,7 @@ void VibratoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 juce::AudioProcessorEditor* VibratoAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (176, 132, 255));
 }
 
 void VibratoAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

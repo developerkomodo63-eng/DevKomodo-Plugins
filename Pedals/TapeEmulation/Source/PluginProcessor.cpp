@@ -186,7 +186,7 @@ void TapeEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
 juce::AudioProcessorEditor* TapeEmulationAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (200, 168, 120));
 }
 
 void TapeEmulationAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

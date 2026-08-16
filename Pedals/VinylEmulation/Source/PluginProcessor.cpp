@@ -169,7 +169,7 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
 juce::AudioProcessorEditor* VinylEmulationAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (196, 178, 150));
 }
 
 void VinylEmulationAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

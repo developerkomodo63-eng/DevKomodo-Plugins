@@ -266,19 +266,14 @@ public:
         g.setColour (juce::Colour::fromRGB (55, 58, 68));
         g.drawRoundedRectangle (outer, 13.0f, 1.0f);
 
-        // Static card shading is paint-only; it adds no DSP cost.
-        auto cards = outer.withTrimmedTop (110).reduced (10.0f, 4.0f);
-        const int cardCount = juce::jmax (1, (int) knobs.size() + (int) choices.size());
-        const int columns = cardCount <= 3 ? cardCount : (cardCount <= 6 ? 3 : 4);
-        const int rows = (cardCount + columns - 1) / columns;
-        const int gap = 8;
-        const float cardW = (cards.getWidth() - gap * (columns - 1)) / (float) columns;
-        const float cardH = juce::jmax (58.0f, (cards.getHeight() - gap * (rows - 1)) / (float) rows);
-        for (int i = 0; i < cardCount; ++i)
+        // Static card shading is paint-only; it adds no DSP cost. The card
+        // rectangles are cached from resized() so they always line up exactly
+        // with the real knob/combo bounds (previously this recomputed its own
+        // grid with different margins, so the cards visibly drifted away from
+        // the actual controls).
+        for (const auto& cell : controlCellBounds)
         {
-            const int row = i / columns, col = i % columns;
-            auto card = juce::Rectangle<float> (cards.getX() + col * (cardW + gap),
-                                                 cards.getY() + row * (cardH + gap), cardW, cardH);
+            auto card = cell.toFloat();
             g.setColour (juce::Colour::fromRGB (22, 24, 29));
             g.fillRoundedRectangle (card, 9.0f);
             g.setColour (juce::Colour::fromRGB (48, 52, 61));
@@ -350,6 +345,7 @@ public:
             labels.push_back (c.label.get());
         }
 
+        controlCellBounds.clear();
         const int count = (int) controls.size();
         if (count > 0)
         {
@@ -359,6 +355,7 @@ public:
             const int cellW = juce::jmax (92, (bounds.getWidth() - gap * (columns - 1)) / columns);
             const int cellH = juce::jmax (82, (bounds.getHeight() - gap * (rows - 1)) / rows);
 
+            controlCellBounds.reserve ((size_t) count);
             for (int i = 0; i < count; ++i)
             {
                 const int row = i / columns;
@@ -366,6 +363,7 @@ public:
                 auto cell = juce::Rectangle<int> (bounds.getX() + col * (cellW + gap),
                                                    bounds.getY() + row * (cellH + gap),
                                                    cellW, cellH);
+                controlCellBounds.push_back (cell);
                 auto labelArea = cell.removeFromTop (20);
                 labels[(size_t) i]->setBounds (labelArea.reduced (3, 0));
                 controls[(size_t) i]->setBounds (cell.reduced (6, 2));
@@ -616,6 +614,7 @@ private:
     std::vector<Choice> choices;
     std::vector<Toggle> toggles;
     std::vector<Preset> factoryPresets;
+    std::vector<juce::Rectangle<int>> controlCellBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DevKomodoUniversalEditor)
 };

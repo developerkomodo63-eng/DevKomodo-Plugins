@@ -3,7 +3,7 @@
 AmpSimAudioProcessorEditor::AmpSimAudioProcessorEditor (AmpSimAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    editor = std::make_unique<DevKomodoUniversalEditor> (p, p.apvts, JucePlugin_Name);
+    editor = std::make_unique<DevKomodoUniversalEditor> (p, p.apvts, JucePlugin_Name, juce::Colour::fromRGB (255, 138, 61));
 
     addAndMakeVisible (loadCabButton);
     addAndMakeVisible (clearCabButton);

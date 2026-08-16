@@ -216,7 +216,7 @@ void MultibandCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
 
 juce::AudioProcessorEditor* MultibandCompressorAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name);
+    return new DevKomodoUniversalEditor (*this, apvts, JucePlugin_Name, juce::Colour::fromRGB (48, 118, 214));
 }
 
 void MultibandCompressorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

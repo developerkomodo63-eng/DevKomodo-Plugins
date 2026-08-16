@@ -6,7 +6,7 @@
 juce::AudioProcessorValueTreeState::ParameterLayout ConsoleDriveAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 1.0f, 0.2f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 2.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "TONE", 1 }, "Tone", -12.0f, 12.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "LEVEL", 1 }, "Level", -12.0f, 12.0f, 0.0f));
     return { params.begin(), params.end() };
@@ -28,9 +28,11 @@ ConsoleDriveAudioProcessor::ConsoleDriveAudioProcessor()
 
 ConsoleDriveAudioProcessor::~ConsoleDriveAudioProcessor() {}
 
-void ConsoleDriveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void ConsoleDriveAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (sampleRate, samplesPerBlock);
+    juce::ignoreUnused (samplesPerBlock);
+    sampleRate = newSampleRate;
+    lowState.assign ((size_t) juce::jmax (1, getTotalNumOutputChannels()), 0.0f);
 }
 
 void ConsoleDriveAudioProcessor::releaseResources() {}
@@ -57,22 +59,32 @@ void ConsoleDriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numCh = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const int numSamples = buffer.getNumSamples();
 
-    const float drive = apvts.getRawParameterValue ("DRIVE")->load();
+    const float driveKnob = apvts.getRawParameterValue ("DRIVE")->load();
+    const float drive = driveKnob * 0.1f;
     const float tone  = apvts.getRawParameterValue ("TONE")->load();
     const float levelDb = apvts.getRawParameterValue ("LEVEL")->load();
     const float gain = juce::Decibels::decibelsToGain (levelDb);
+    const float lowCoeff = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 180.0f / (float) sampleRate);
+    const float toneTilt = tone / 12.0f;
 
     for (int ch = 0; ch < numCh; ++ch)
     {
         float* data = buffer.getWritePointer (ch);
+        float low = lowState[(size_t) ch];
         for (int i = 0; i < numSamples; ++i)
         {
-            float in = data[i];
-            float shaped = fast_tanh (in * (1.0f + drive * 4.0f));
-            // gentle tone tilt via simple bias
-            shaped = shaped * (1.0f + tone * 0.02f);
+            const float in = data[i];
+            // Console drive is intentionally subtle: low-frequency energy is
+            // compressed a little more and the tone control is a true spectral
+            // tilt, rather than a post-saturation volume multiplier.
+            low += (in - low) * lowCoeff;
+            const float high = in - low;
+            const float driven = low * (1.0f + drive * 1.8f) + high * (1.0f + drive * 2.4f);
+            float shaped = driven / (1.0f + 0.22f * std::abs (driven));
+            shaped += toneTilt * (high * 0.35f - low * 0.10f);
             data[i] = shaped * gain;
         }
+        lowState[(size_t) ch] = low;
     }
 }
 

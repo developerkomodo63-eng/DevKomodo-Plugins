@@ -116,9 +116,17 @@ void ConvolutionReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
         dryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
 
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::ProcessContextReplacing<float> context (block);
-    convolution.process (context);
+    // Convolution starts with no active IR. Processing that empty engine as
+    // wet signal would turn a fresh instance into an unexpected volume drop.
+    // Keep the plugin transparent until an actual IR is active. JUCE exposes
+    // the active IR size for exactly this kind of state check.
+    const bool hasActiveIR = convolution.getCurrentIRSize() > 0;
+    if (hasActiveIR)
+    {
+        juce::dsp::AudioBlock<float> block (buffer);
+        juce::dsp::ProcessContextReplacing<float> context (block);
+        convolution.process (context);
+    }
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -126,7 +134,10 @@ void ConvolutionReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         const float* dry = dryBuffer.getReadPointer (channel);
 
         for (int sample = 0; sample < numSamples; ++sample)
-            wet[sample] = (dry[sample] * (1.0f - mix) + wet[sample] * mix) * outputGain;
+        {
+            const float wetSample = hasActiveIR ? wet[sample] : dry[sample];
+            wet[sample] = (dry[sample] * (1.0f - mix) + wetSample * mix) * outputGain;
+        }
     }
 }
 

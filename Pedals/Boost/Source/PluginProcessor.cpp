@@ -6,7 +6,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout BoostAudioProcessor::createP
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "GAIN", 1 }, "Gain", -6.0f, 24.0f, 6.0f));
+        juce::ParameterID { "GAIN", 1 }, "Gain", 0.0f, 10.0f, 3.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "BASS", 1 }, "Bass Contour", -6.0f, 6.0f, 0.0f));
@@ -78,8 +78,9 @@ void BoostAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
-    const float gainDb = apvts.getRawParameterValue ("GAIN")->load();
+    const float gainKnob = apvts.getRawParameterValue ("GAIN")->load();
     const float bassDb = apvts.getRawParameterValue ("BASS")->load();
+    const float gainDb = juce::jmap (gainKnob, 0.0f, 10.0f, 0.0f, 24.0f);
     const float gain = juce::Decibels::decibelsToGain (gainDb);
 
     auto shelfCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (

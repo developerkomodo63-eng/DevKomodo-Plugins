@@ -74,10 +74,6 @@ private:
     float synthGateReleaseCoeff = 0.0f;
 
     std::atomic<float> detectedFrequency { 0.0f };
-    // Guitar profile: tighter low end, controlled stereo spread and
-    // a short transient mask to avoid pick/attack-triggered phase smear.
-    float guitarLowCutState = 0.0f;
-    float guitarTransientState = 0.0f;
 
     std::atomic<float> detectedRms { 0.0f };
 

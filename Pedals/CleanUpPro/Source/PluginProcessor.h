@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 
 class CleanUpProAudioProcessor  : public juce::AudioProcessor
 {
@@ -38,5 +39,9 @@ public:
 
 private:
     double fs = 44100.0;
+    std::vector<float> gateGain;
+    std::vector<float> gateDetector;
+    std::vector<float> deEssLow;
+    std::vector<float> transientLow;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CleanUpProAudioProcessor)
 };

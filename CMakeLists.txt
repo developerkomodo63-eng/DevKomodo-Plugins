@@ -11,8 +11,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Keep the package lean for GitHub runners and shipping builds.
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+# LTO is enabled per JUCE target below; enabling global IPO as well can
+# duplicate/conflict with JUCE's recommended LTO flags on MSVC.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(JUCE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(JUCE_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
 # This distribution is intentionally Windows-only. GitHub Actions and release
 # artifacts target 64-bit Windows VST3 with the MSVC toolchain.

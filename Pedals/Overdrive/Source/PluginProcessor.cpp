@@ -10,7 +10,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OverdriveAudioProcessor::cre
         juce::StringArray { "Guitar", "Bass" }, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "DRIVE", 1 }, "Drive", 1.0f, 40.0f, 12.0f));
+        juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 2.8f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "TONE", 1 }, "Tone", 1000.0f, 8000.0f, 4500.0f));
@@ -55,16 +55,6 @@ void OverdriveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
 
     lpFilter.prepare(spec);
     lpFilter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
-
-    // 2x oversampling solo alrededor de la saturacion, para no pagar el
-    // costo de CPU en toda la cadena. IIR polifase = liviano, sin fase lineal.
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t) spec.numChannels,
-        1,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
-        false);
-    oversampler->initProcessing((size_t) samplesPerBlock);
-    setLatencySamples ((int) oversampler->getLatencyInSamples());
 
     dcBlockerX1.assign((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
@@ -120,7 +110,8 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float driveBase = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveKnob = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveBase = 1.0f + driveKnob * 3.9f;
     const float drive = bassMode ? driveBase * 0.72f : driveBase;
     const float toneCutoff = bassMode ? juce::jmax (1000.0f, apvts.getRawParameterValue("TONE")->load()) : juce::jmax (1800.0f, apvts.getRawParameterValue("TONE")->load());
     const float character = apvts.getRawParameterValue("CHARACTER")->load();
@@ -139,24 +130,13 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::AudioBlock<float> oversampledBlock = oversampler->processSamplesUp (block);
-
-    const auto numOSChannels = oversampledBlock.getNumChannels();
-    const auto numOSSamples  = oversampledBlock.getNumSamples();
-
-    for (size_t channel = 0; channel < numOSChannels; ++channel)
+    // Native-rate nonlinear stage keeps CPU and latency extremely low.
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = oversampledBlock.getChannelPointer (channel);
-
-        for (size_t sample = 0; sample < numOSSamples; ++sample)
-        {
-            const float drivenSample = data[sample] * drive;
-            data[sample] = processSaturationSample (drivenSample, character);
-        }
+        float* data = buffer.getWritePointer (channel);
+        for (int sample = 0; sample < numSamples; ++sample)
+            data[sample] = processSaturationSample (data[sample] * drive, character);
     }
-
-    oversampler->processSamplesDown (block);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {

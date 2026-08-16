@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 
 class ConsoleDriveAudioProcessor  : public juce::AudioProcessor
 {
@@ -37,5 +38,7 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 
 private:
+    double sampleRate = 44100.0;
+    std::vector<float> lowState;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConsoleDriveAudioProcessor)
 };

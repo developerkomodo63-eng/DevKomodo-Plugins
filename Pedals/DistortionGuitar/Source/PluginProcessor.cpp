@@ -11,7 +11,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DistortionGuitarAudioProcess
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "DRIVE", 1 }, "Drive",
-        juce::NormalisableRange<float> { 1.0f, 80.0f, 0.0f, 0.35f }, 28.0f));
+        0.0f, 10.0f, 3.4f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "SCOOP", 1 }, "Scoop", 0.0f, 1.0f, 0.15f));
@@ -69,14 +69,6 @@ void DistortionGuitarAudioProcessor::prepareToPlay (double sampleRate, int sampl
     for (auto& f : scoopFilters)
         f.reset();
 
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t) spec.numChannels,
-        1,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
-        false);
-    oversampler->initProcessing((size_t) samplesPerBlock);
-    setLatencySamples ((int) oversampler->getLatencyInSamples());
-
     dcBlockerX1.assign((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
 
@@ -108,19 +100,24 @@ bool DistortionGuitarAudioProcessor::isBusesLayoutSupported (const BusesLayout& 
 
 float DistortionGuitarAudioProcessor::processDistortionSample (float x, float bias) noexcept
 {
-    // sigue siendo un clip mayormente simetrico (el caracter clasico de
-    // distorsion viene de un op-amp recortando parejo), pero Bias permite
-    // sumarle un poco de asimetria tipo valvula si se quiere -- en 0 el
-    // comportamiento es identico al original
-    constexpr float hardness = 9.0f;
-    const float biasOffset = bias * 0.15f;
+    // Distortion is intentionally the hardest of the three drive families:
+    // a steep symmetric knee, with Bias only adding a small optional
+    // asymmetry. Unlike Overdrive this does not use a warm tanh curve, and
+    // unlike Fuzz it does not fold the waveform back on itself.
+    constexpr float hardness = 12.0f;
+    const float biasOffset = bias * 0.12f;
     const float biased = x + biasOffset;
-    const float sign = (biased >= 0.0f) ? 1.0f : -1.0f;
-    const float shaped = sign * (1.0f - std::exp (-hardness * std::abs (biased)));
+    const float ax = std::abs (biased);
+    const float clipped = (ax < 0.75f)
+        ? biased * (1.0f + 0.20f * ax * ax)
+        : std::copysign (1.0f - std::exp (-hardness * (ax - 0.70f)), biased);
 
-    const float restSign = (biasOffset >= 0.0f) ? 1.0f : -1.0f;
-    const float rest = restSign * (1.0f - std::exp (-hardness * std::abs (biasOffset)));
-    return shaped - rest;
+    const float restAx = std::abs (biasOffset);
+    const float rest = (restAx < 0.75f)
+        ? biasOffset * (1.0f + 0.20f * restAx * restAx)
+        : std::copysign (1.0f - std::exp (-hardness * (restAx - 0.70f)), biasOffset);
+
+    return clipped - rest;
 }
 
 void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -136,7 +133,8 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float driveBase  = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveKnob  = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveBase  = 1.0f + driveKnob * 7.9f;
     const float drive      = bassMode ? driveBase * 0.62f : driveBase;
     const float scoopBase  = apvts.getRawParameterValue("SCOOP")->load();
     const float scoop      = bassMode ? scoopBase * 0.08f : scoopBase * 1.10f;
@@ -171,24 +169,14 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::AudioBlock<float> oversampledBlock = oversampler->processSamplesUp (block);
-
-    const auto numOSChannels = oversampledBlock.getNumChannels();
-    const auto numOSSamples  = oversampledBlock.getNumSamples();
-
-    for (size_t channel = 0; channel < numOSChannels; ++channel)
+    // Single-rate hard-knee distortion by design: lightweight, zero added
+    // latency and intentionally different from the softer Overdrive curve.
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = oversampledBlock.getChannelPointer (channel);
-
-        for (size_t sample = 0; sample < numOSSamples; ++sample)
-        {
-            const float drivenSample = data[sample] * drive;
-            data[sample] = processDistortionSample (drivenSample, bias);
-        }
+        float* data = buffer.getWritePointer (channel);
+        for (int sample = 0; sample < numSamples; ++sample)
+            data[sample] = processDistortionSample (data[sample] * drive, bias);
     }
-
-    oversampler->processSamplesDown (block);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {

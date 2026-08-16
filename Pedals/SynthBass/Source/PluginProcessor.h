@@ -74,10 +74,6 @@ private:
     float synthGateReleaseCoeff = 0.0f;
 
     std::atomic<float> detectedFrequency { 0.0f };
-    // Bass profile: mono-compatible sub/low end and conservative
-    // harmonic spread to prevent low-frequency phase cancellation.
-    float bassLowMonoState = 0.0f;
-    float bassTransientState = 0.0f;
 
     std::atomic<float> detectedRms { 0.0f };
 

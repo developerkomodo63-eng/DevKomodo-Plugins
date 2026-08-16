@@ -41,10 +41,6 @@ private:
     juce::dsp::StateVariableTPTFilter<float> hpFilter;
     juce::dsp::StateVariableTPTFilter<float> lpFilter;
 
-    // el fuzz genera muchos mas armonicos que una distorsion tipo drive,
-    // asi que el oversampling importa mas aca para controlar el aliasing
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
     juce::AudioBuffer<float> dryBuffer;

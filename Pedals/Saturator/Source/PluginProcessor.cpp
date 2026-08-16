@@ -4,7 +4,7 @@
 juce::AudioProcessorValueTreeState::ParameterLayout SaturatorAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
-    p.push_back (std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"DRIVE",1}, "Drive", 0.0f, 30.0f, 6.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"DRIVE",1}, "Drive", 0.0f, 10.0f, 6.0f));
     p.push_back (std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"MODE",1}, "Mode", juce::StringArray{"Tube", "Tape", "Diode", "Hard"}, 0));
     p.push_back (std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"COLOR",1}, "Color", -1.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"MIX",1}, "Mix", 0.0f, 1.0f, 1.0f));
@@ -28,14 +28,10 @@ SaturatorAudioProcessor::SaturatorAudioProcessor()
 void SaturatorAudioProcessor::prepareToPlay (double sr, int block)
 {
     sampleRate = sr;
-    juce::dsp::ProcessSpec spec{sr, (juce::uint32) block, (juce::uint32) getTotalNumOutputChannels()};
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>>((size_t) spec.numChannels, 2,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, false);
-    oversampler->initProcessing((size_t) block);
-    setLatencySamples((int) oversampler->getLatencyInSamples());
+    juce::ignoreUnused (block);
     dryBuffer.setSize(getTotalNumOutputChannels(), block, false, false, true);
 }
-void SaturatorAudioProcessor::releaseResources() { oversampler.reset(); setLatencySamples(0); }
+void SaturatorAudioProcessor::releaseResources() {}
 bool SaturatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
     auto out = l.getMainOutputChannelSet();
@@ -43,14 +39,33 @@ bool SaturatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) cons
 }
 float SaturatorAudioProcessor::saturate (float x, float mode, float character) noexcept
 {
-    const float bias = character * 0.18f;
-    x += bias;
-    float y;
-    if (mode < 0.5f) y = std::tanh(x * 1.25f);
-    else if (mode < 1.5f) y = (2.0f / juce::MathConstants<float>::pi) * std::atan(x * 1.7f);
-    else if (mode < 2.5f) y = x / (1.0f + std::abs(x) * 0.85f);
-    else y = juce::jlimit(-1.0f, 1.0f, x);
-    return y - std::tanh(bias * 1.25f);
+    // Four genuinely different transfer families rather than four drive
+    // multipliers: tube, tape, diode and hard clip.
+    const float bias = character * 0.22f;
+    const float biased = x + bias;
+    float y = 0.0f;
+    if (mode < 0.5f)
+    {
+        const float asym = biased + 0.10f * biased * biased;
+        y = std::tanh (asym * 1.15f);
+    }
+    else if (mode < 1.5f)
+    {
+        const float compressed = biased / (1.0f + 0.55f * std::abs (biased));
+        y = std::tanh (compressed * 1.45f);
+    }
+    else if (mode < 2.5f)
+    {
+        const float k = 1.6f + character * 2.0f;
+        y = std::copysign (1.0f - std::exp (-k * std::abs (biased)), biased);
+    }
+    else
+    {
+        const float threshold = juce::jmax (0.35f, 0.92f - character * 0.30f);
+        y = juce::jlimit (-threshold, threshold, biased) / threshold;
+    }
+    const float rest = mode < 2.5f ? 0.0f : juce::jlimit (-1.0f, 1.0f, bias);
+    return juce::jlimit (-1.0f, 1.0f, y - rest);
 }
 void SaturatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
@@ -63,16 +78,13 @@ void SaturatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float mix = apvts.getRawParameterValue("MIX")->load();
     const float outGain = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("OUTPUT")->load());
     for (int c = 0; c < in; ++c) dryBuffer.copyFrom(c, 0, buffer, c, 0, n);
-    juce::dsp::AudioBlock<float> block(buffer);
-    auto os = oversampler->processSamplesUp(block);
     const float gain = juce::Decibels::decibelsToGain(drive);
-    for (size_t c=0;c<os.getNumChannels();++c)
+    for (int c = 0; c < in; ++c)
     {
-        auto* d=os.getChannelPointer(c);
-        for (size_t s=0;s<os.getNumSamples();++s)
-            d[s]=saturate(d[s]*gain, mode, color);
+        auto* d = buffer.getWritePointer(c);
+        for (int s = 0; s < n; ++s)
+            d[s] = saturate(d[s] * gain, mode, color);
     }
-    oversampler->processSamplesDown(block);
     const float dryGain=1.0f-mix;
     for(int c=0;c<in;++c)
     {

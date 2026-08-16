@@ -6,8 +6,12 @@
 juce::AudioProcessorValueTreeState::ParameterLayout ToneSculptorAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 1.0f, 0.25f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "TONE", 1 }, "Tone", 0.0f, 1.0f, 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 2.5f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "STYLE", 1 }, "Style",
+        juce::StringArray { "Tube", "Tape", "Console", "Edge" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "TONE", 1 }, "Tone", 0.0f, 10.0f, 5.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "BODY", 1 }, "Body", -6.0f, 6.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "AIR", 1 }, "Air", -6.0f, 6.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "LEVEL", 1 }, "Level", -12.0f, 12.0f, 0.0f));
     return { params.begin(), params.end() };
@@ -33,6 +37,7 @@ void ToneSculptorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 {
     juce::ignoreUnused (samplesPerBlock);
     fs = sampleRate;
+    lowState.assign ((size_t) juce::jmax (1, getTotalNumOutputChannels()), 0.0f);
 }
 
 void ToneSculptorAudioProcessor::releaseResources() {}
@@ -56,30 +61,69 @@ bool ToneSculptorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 
 void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
+    juce::ScopedNoDenormals noDenormals;
     const int numCh = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const int numSamples = buffer.getNumSamples();
 
     const float drive = apvts.getRawParameterValue ("DRIVE")->load();
-    const float tone  = apvts.getRawParameterValue ("TONE")->load();
-    const float mix   = apvts.getRawParameterValue ("MIX")->load();
-    const float levelDb = apvts.getRawParameterValue ("LEVEL")->load();
-    const float gain = juce::Decibels::decibelsToGain (levelDb);
+    const int style = (int) apvts.getRawParameterValue ("STYLE")->load();
+    const float tone = apvts.getRawParameterValue ("TONE")->load();
+    const float bodyDb = apvts.getRawParameterValue ("BODY")->load();
+    const float airDb = apvts.getRawParameterValue ("AIR")->load();
+    const float mix = apvts.getRawParameterValue ("MIX")->load();
+    const float levelGain = juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("LEVEL")->load());
 
-    // simple per-sample soft-saturation + tone tilt
-    const float hp = 0.5f + tone * 0.5f; // tilt control
+    const float preGain = 1.0f + drive * 0.30f;
+    const float driveComp = 1.0f / (1.0f + drive * 0.055f);
+    const float toneTilt = (tone - 5.0f) / 5.0f;
+    const float lowCoeff = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * 700.0f / (float) fs);
+    const float bodyGain = juce::Decibels::decibelsToGain (bodyDb);
+    const float airGain = juce::Decibels::decibelsToGain (airDb);
+
     for (int ch = 0; ch < numCh; ++ch)
     {
         float* data = buffer.getWritePointer (ch);
+        float lowStateCh = lowState[(size_t) ch];
+
         for (int i = 0; i < numSamples; ++i)
         {
-            float in = data[i];
-            float driven = fast_tanh (in * (1.0f + drive * 3.0f));
-            // simple tonal balance: mix between low-pass and high-pass shaped
-            float low = driven * (1.0f - hp);
-            float high = driven * hp;
-            float out = in * (1.0f - mix) + (low + high) * mix;
-            data[i] = out * gain;
+            const float dry = data[i];
+            const float pushed = dry * preGain;
+            float driven = 0.0f;
+            switch (style)
+            {
+                case 0: // Tube: asymmetric, soft and slightly compressed.
+                {
+                    const float biased = pushed + 0.08f * pushed * pushed;
+                    driven = fast_tanh (biased) * driveComp;
+                    break;
+                }
+                case 1: // Tape: rounded knee with stronger level-dependent compression.
+                    driven = (pushed / (1.0f + 0.45f * std::abs (pushed))) * driveComp;
+                    break;
+                case 2: // Console: deliberately subtle and mostly transparent.
+                    driven = (pushed / (1.0f + 0.18f * std::abs (pushed))) * driveComp;
+                    break;
+                default: // Edge: sharper knee for presence without becoming a distortion plugin.
+                    driven = fast_tanh (pushed * 1.35f) * 0.92f * driveComp;
+                    break;
+            }
+            lowStateCh += (driven - lowStateCh) * lowCoeff;
+            const float low = lowStateCh;
+            const float high = driven - low;
+
+            // Tone is a true spectral tilt; Body/Air provide broad musical
+            // shelves without the CPU cost of a full EQ graph.
+            float sculpted = driven;
+            sculpted += low * (bodyGain - 1.0f);
+            sculpted += high * (airGain - 1.0f);
+            sculpted += toneTilt * (high * 0.55f - low * 0.20f);
+
+            const float out = (dry * (1.0f - mix) + sculpted * mix) * levelGain;
+            data[i] = juce::jlimit (-1.2f, 1.2f, out);
         }
+
+        lowState[(size_t) ch] = lowStateCh;
     }
 }
 

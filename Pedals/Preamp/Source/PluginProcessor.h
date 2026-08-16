@@ -38,10 +38,7 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 
 private:
-    // dos shelfs (graves/agudos) *por canal*, saturacion suave sin
-    // oversampling (a diferencia del Overdrive/Fuzz/Distortion: la idea del
-    // preamp es dar calidez sutil, no gancho armonico fuerte, asi que no
-    // hace falta pagar el costo extra del oversampler)
+    // Dos shelves (graves/agudos) por canal y saturacion suave de baja carga.
     struct ChannelTone
     {
         juce::dsp::IIR::Filter<float> bass, treble;

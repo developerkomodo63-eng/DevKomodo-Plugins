@@ -1,4 +1,4 @@
-name: Build DevKomodo Pedals VST3
+name: DevKomodo Ultimate - Windows VST3
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
   build-windows-vst3:
     name: Windows x64 VST3
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository

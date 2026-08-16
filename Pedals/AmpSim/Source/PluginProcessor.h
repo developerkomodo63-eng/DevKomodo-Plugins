@@ -63,8 +63,6 @@ private:
     };
     std::vector<ChannelToneStack> channels;
 
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
 

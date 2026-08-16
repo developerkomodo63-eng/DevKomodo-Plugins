@@ -11,23 +11,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpSimAudioProcessor::create
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "GAIN", 1 }, "Gain",
-        juce::NormalisableRange<float> { 1.0f, 50.0f, 0.0f, 0.35f }, 12.0f));
+        0.0f, 10.0f, 2.5f));
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { "VOICE", 1 }, "Amp Voice",
         juce::StringArray { "Clean", "Crunch", "British Lead", "American Lead", "High Gain" }, 1));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "BASS", 1 }, "Bass", -12.0f, 12.0f, 0.0f));
+        juce::ParameterID { "BASS", 1 }, "Bass", 0.0f, 10.0f, 5.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "MID", 1 }, "Mid", -12.0f, 12.0f, 0.0f));
+        juce::ParameterID { "MID", 1 }, "Mid", 0.0f, 10.0f, 5.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "TREBLE", 1 }, "Treble", -12.0f, 12.0f, 0.0f));
+        juce::ParameterID { "TREBLE", 1 }, "Treble", 0.0f, 10.0f, 5.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "PRESENCE", 1 }, "Presence", -6.0f, 6.0f, 0.0f));
+        juce::ParameterID { "PRESENCE", 1 }, "Presence", 0.0f, 10.0f, 5.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { "CAB", 1 }, "Cabinet",
@@ -35,7 +35,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpSimAudioProcessor::create
                              "Bass 1x15", "Bass 4x10", "Direct / No Cab" }, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "LEVEL", 1 }, "Level", -24.0f, 6.0f, -6.0f));
+        juce::ParameterID { "LEVEL", 1 }, "Level", 0.0f, 10.0f, 6.0f));
 
     return { params.begin(), params.end() };
 }
@@ -75,14 +75,6 @@ void AmpSimAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     channels.resize ((size_t) numChannels);
     for (auto& c : channels)
         c.reset();
-
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t) spec.numChannels,
-        1,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
-        false);
-    oversampler->initProcessing ((size_t) samplesPerBlock);
-    setLatencySamples ((int) oversampler->getLatencyInSamples());
 
     dcBlockerX1.assign ((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign ((size_t) spec.numChannels, 0.0f);
@@ -175,14 +167,20 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float gain      = apvts.getRawParameterValue ("GAIN")->load();
+    const float gainKnob = apvts.getRawParameterValue ("GAIN")->load();
+    const float gain      = 1.0f + gainKnob * 4.9f;
     const int voiceChoice  = (int) apvts.getRawParameterValue ("VOICE")->load();
-    const float bassDb    = apvts.getRawParameterValue ("BASS")->load();
-    const float midDb     = apvts.getRawParameterValue ("MID")->load();
-    const float trebleDb  = apvts.getRawParameterValue ("TREBLE")->load();
-    const float presenceDb= apvts.getRawParameterValue ("PRESENCE")->load();
+    const float bassKnob  = apvts.getRawParameterValue ("BASS")->load();
+    const float midKnob   = apvts.getRawParameterValue ("MID")->load();
+    const float trebleKnob= apvts.getRawParameterValue ("TREBLE")->load();
+    const float presenceKnob = apvts.getRawParameterValue ("PRESENCE")->load();
+    const float bassDb    = juce::jmap (bassKnob, 0.0f, 10.0f, -12.0f, 12.0f);
+    const float midDb     = juce::jmap (midKnob, 0.0f, 10.0f, -12.0f, 12.0f);
+    const float trebleDb  = juce::jmap (trebleKnob, 0.0f, 10.0f, -12.0f, 12.0f);
+    const float presenceDb= juce::jmap (presenceKnob, 0.0f, 10.0f, -6.0f, 6.0f);
     const int cabChoice   = (int) apvts.getRawParameterValue ("CAB")->load();
-    const float levelDb   = apvts.getRawParameterValue ("LEVEL")->load();
+    const float levelKnob = apvts.getRawParameterValue ("LEVEL")->load();
+    const float levelDb   = juce::jmap (levelKnob, 0.0f, 10.0f, -24.0f, 6.0f);
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
 
     // cada voz cambia el bias y la "dureza" de las dos etapas en cascada,
@@ -249,25 +247,18 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::AudioBlock<float> oversampledBlock = oversampler->processSamplesUp (block);
-
-    const auto numOSChannels = oversampledBlock.getNumChannels();
-    const auto numOSSamples  = oversampledBlock.getNumSamples();
-
-    for (size_t channel = 0; channel < numOSChannels; ++channel)
+    // Native-rate amp stages keep CPU and latency low. The cab/tone stack
+    // after the nonlinear stages also limits excessive high-frequency energy.
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = oversampledBlock.getChannelPointer (channel);
-
-        for (size_t sample = 0; sample < numOSSamples; ++sample)
+        float* data = buffer.getWritePointer (channel);
+        for (int sample = 0; sample < numSamples; ++sample)
         {
             const float driven = data[sample] * gain * voice.preGain;
             const float stage1 = preampStage (driven, voice.bias);
             data[sample] = powerAmpStage (stage1 * 2.0f, voice.hardness);
         }
     }
-
-    oversampler->processSamplesDown (block);
 
     // gabinete: si hay un IR cargado, usamos convolucion real; si no, el
     // filtro algoritmico de siempre

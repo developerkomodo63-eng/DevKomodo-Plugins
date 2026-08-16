@@ -41,9 +41,6 @@ private:
     juce::dsp::StateVariableTPTFilter<float> hpFilter;
     juce::dsp::StateVariableTPTFilter<float> lpFilter;
 
-    // oversampling solo para la etapa no lineal (drive + saturacion)
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
 

@@ -200,8 +200,6 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // rango/caracter tipico distinto sobre el mismo motor Freeverb, en vez
     // de necesitar tres algoritmos separados
     float mappedSize = rawSize, mappedDamping = rawDamping, mappedWidth = rawWidth;
-    if (bassMode)
-        mappedWidth *= 0.45f;
     switch (type)
     {
         case 1: // Hall: siempre grande, mas brillante (menos damping)
@@ -217,6 +215,11 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             mappedSize = rawSize * 0.75f;
             break;
     }
+
+    // Bass width is applied after the type mapping so Plate cannot undo the
+    // mono-compatible low-frequency profile by forcing width back to 0.8.
+    if (bassMode)
+        mappedWidth *= 0.45f;
 
     juce::dsp::Reverb::Parameters params;
     params.roomSize   = mappedSize;
@@ -252,21 +255,30 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     constexpr float grainSizeMs = 40.0f;
     const float grainSizeSamples = grainSizeMs / 1000.0f * (float) getSampleRate();
 
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    if (shimmer > 1.0e-4f)
     {
-        const float* wetForShimmer = buffer.getReadPointer (channel);
-        float* feedbackOut = shimmerFeedbackBuffer.getWritePointer (channel);
-        auto& state = shimmerState[(size_t) channel];
-
-        for (int sample = 0; sample < numSamples; ++sample)
+        for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
-            const float shifted = processOctaveUp (state, wetForShimmer[sample], grainSizeSamples);
-            // limite suave: sin esto, Shimmer alto + Freeze (dos sistemas
-            // de feedback apilados) podria acumular volumen sin techo en
-            // sesiones largas. tanh no cambia el caracter en uso normal,
-            // solo actua como red de seguridad cuando la energia se dispara.
-            feedbackOut[sample] = std::tanh (shifted);
+            const float* wetForShimmer = buffer.getReadPointer (channel);
+            float* feedbackOut = shimmerFeedbackBuffer.getWritePointer (channel);
+            auto& state = shimmerState[(size_t) channel];
+
+            for (int sample = 0; sample < numSamples; ++sample)
+            {
+                const float shifted = processOctaveUp (state, wetForShimmer[sample], grainSizeSamples);
+                // limite suave: sin esto, Shimmer alto + Freeze (dos sistemas
+                // de feedback apilados) podria acumular volumen sin techo en
+                // sesiones largas. tanh no cambia el caracter en uso normal,
+                // solo actua como red de seguridad cuando la energia se dispara.
+                feedbackOut[sample] = std::tanh (shifted);
+            }
         }
+    }
+    else
+    {
+        shimmerFeedbackBuffer.clear (0, 0, numSamples);
+        if (totalNumInputChannels > 1)
+            shimmerFeedbackBuffer.clear (1, 0, numSamples);
     }
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)

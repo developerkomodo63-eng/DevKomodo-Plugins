@@ -27,7 +27,6 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 private:
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
     juce::AudioBuffer<float> dryBuffer;
     double sampleRate = 44100.0;
     static float saturate (float x, float mode, float character) noexcept;

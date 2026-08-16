@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 
 class ToneSculptorAudioProcessor  : public juce::AudioProcessor
 {
@@ -38,5 +39,6 @@ public:
 
 private:
     double fs = 44100.0;
+    std::vector<float> lowState;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToneSculptorAudioProcessor)
 };

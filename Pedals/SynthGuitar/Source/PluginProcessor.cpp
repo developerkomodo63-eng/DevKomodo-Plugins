@@ -96,8 +96,6 @@ void SynthGuitarAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     pendingPitchFrames = 0;
     invalidPitchFrames = 0;
     synthGateState = 0.0f;
-    guitarLowCutState = 0.0f;
-    guitarTransientState = 0.0f;
     synthGateAttackCoeff = std::exp (-1.0f / (0.010f * (float) sampleRate));
     synthGateReleaseCoeff = std::exp (-1.0f / (0.030f * (float) sampleRate));
 

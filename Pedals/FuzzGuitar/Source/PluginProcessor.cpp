@@ -10,11 +10,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout FuzzGuitarAudioProcessor::cr
         juce::StringArray { "Guitar", "Bass" }, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "FUZZ", 1 }, "Fuzz", 0.0f, 1.0f, 0.7f));
+        juce::ParameterID { "FUZZ", 1 }, "Fuzz", 0.0f, 10.0f, 7.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "DRIVE", 1 }, "Drive",
-        juce::NormalisableRange<float> { 1.0f, 100.0f, 0.0f, 0.35f }, 25.0f));
+        juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 2.4f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "BIAS", 1 }, "Bias", -1.0f, 1.0f, 0.0f));
@@ -63,14 +62,6 @@ void FuzzGuitarAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     lpFilter.prepare(spec);
     lpFilter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
 
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t) spec.numChannels,
-        1,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
-        false);
-    oversampler->initProcessing((size_t) samplesPerBlock);
-    setLatencySamples ((int) oversampler->getLatencyInSamples());
-
     dcBlockerX1.assign((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
 
@@ -102,28 +93,28 @@ bool FuzzGuitarAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 
 float FuzzGuitarAudioProcessor::processFuzzSample (float x, float hardness, float bias) noexcept
 {
-    const float biased = x + bias * 0.3f;
+    // Fuzz deliberately folds the waveform instead of behaving like a
+    // conventional soft clipper. This creates the dense odd/even harmonic
+    // texture that separates it clearly from Distortion and Saturator.
+    const float biased = x + bias * 0.26f;
+    const float pre = std::tanh (biased * (1.0f + hardness * 2.2f));
+    const float p2 = pre * pre;
+    const float folded = pre * (1.0f - 1.55f * p2 + 0.55f * p2 * p2);
 
-    // blend entre tanh (fuzz suave, mas redondo) y un clipper tipo diodo
-    // (exponencial: se acerca mucho a +-1 sin la "meseta" plana de un clip
-    // digital duro, se parece mas a como satura un fuzz real a transistores)
-    const float diodeAmount = 1.0f + hardness * 7.0f;
-    auto diodeClip = [diodeAmount] (float v) noexcept
-    {
-        const float sign = (v >= 0.0f) ? 1.0f : -1.0f;
-        return sign * (1.0f - std::exp (-diodeAmount * std::abs (v)));
-    };
+    const float diodeK = 2.0f + hardness * 9.0f;
+    const float sign = biased >= 0.0f ? 1.0f : -1.0f;
+    const float diode = sign * (1.0f - std::exp (-diodeK * std::abs (biased)));
+    const float shaped = folded * (0.72f + 0.18f * hardness) + diode * (0.28f - 0.18f * hardness);
 
-    const float soft = std::tanh (biased);
-    const float hard = diodeClip (biased);
-    const float shaped = soft * (1.0f - hardness) + hard * hardness;
+    const float restBias = bias * 0.26f;
+    const float restPre = std::tanh (restBias * (1.0f + hardness * 2.2f));
+    const float restP2 = restPre * restPre;
+    const float restFolded = restPre * (1.0f - 1.55f * restP2 + 0.55f * restP2 * restP2);
+    const float restSign = restBias >= 0.0f ? 1.0f : -1.0f;
+    const float restDiode = restSign * (1.0f - std::exp (-diodeK * std::abs (restBias)));
+    const float rest = restFolded * (0.72f + 0.18f * hardness) + restDiode * (0.28f - 0.18f * hardness);
 
-    const float restBias = bias * 0.3f;
-    const float softRest = std::tanh (restBias);
-    const float hardRest = diodeClip (restBias);
-    const float rest = softRest * (1.0f - hardness) + hardRest * hardness;
-
-    return shaped - rest;
+    return juce::jlimit (-1.0f, 1.0f, shaped - rest);
 }
 
 void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -139,9 +130,11 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float fuzzAmountBase = apvts.getRawParameterValue("FUZZ")->load();
+    const float fuzzAmountKnob = apvts.getRawParameterValue("FUZZ")->load();
+    const float fuzzAmountBase = fuzzAmountKnob * 0.10f;
     const float fuzzAmount = bassMode ? fuzzAmountBase * 0.68f : fuzzAmountBase * 1.05f;
-    const float driveBase   = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveKnob   = apvts.getRawParameterValue("DRIVE")->load();
+    const float driveBase   = 1.0f + driveKnob * 9.9f;
     const float drive       = bassMode ? driveBase * 0.58f : driveBase;
     const float bias        = apvts.getRawParameterValue("BIAS")->load();
     const float toneCutoff  = bassMode ? juce::jmax (1000.0f, apvts.getRawParameterValue("TONE")->load()) : juce::jmax (1800.0f, apvts.getRawParameterValue("TONE")->load());
@@ -165,24 +158,14 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::AudioBlock<float> oversampledBlock = oversampler->processSamplesUp (block);
-
-    const auto numOSChannels = oversampledBlock.getNumChannels();
-    const auto numOSSamples  = oversampledBlock.getNumSamples();
-
-    for (size_t channel = 0; channel < numOSChannels; ++channel)
+    // Fuzz stays at native sample rate; its character comes from folding,
+    // bias and the post-tone filter rather than a heavy processing stage.
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = oversampledBlock.getChannelPointer (channel);
-
-        for (size_t sample = 0; sample < numOSSamples; ++sample)
-        {
-            const float drivenSample = data[sample] * drive;
-            data[sample] = processFuzzSample (drivenSample, fuzzAmount, bias);
-        }
+        float* data = buffer.getWritePointer (channel);
+        for (int sample = 0; sample < numSamples; ++sample)
+            data[sample] = processFuzzSample (data[sample] * drive, fuzzAmount, bias);
     }
-
-    oversampler->processSamplesDown (block);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {

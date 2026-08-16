@@ -1,12 +1,13 @@
 #include "PluginProcessor.h"
 #include "DevKomodoUI.h"
+#include "../../Common/fast_tanh.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout PreampAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "DRIVE", 1 }, "Drive", 1.0f, 8.0f, 2.0f));
+        juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 1.4f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "BASS", 1 }, "Bass", -6.0f, 6.0f, 1.0f));
@@ -88,7 +89,8 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
-    const float drive   = apvts.getRawParameterValue ("DRIVE")->load();
+    const float driveKnob = apvts.getRawParameterValue ("DRIVE")->load();
+    const float drive   = 1.0f + driveKnob * 0.7f;
     const float bassDb  = apvts.getRawParameterValue ("BASS")->load();
     const float trebleDb = apvts.getRawParameterValue ("TREBLE")->load();
     const float blend   = apvts.getRawParameterValue ("BLEND")->load();
@@ -117,11 +119,13 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            // saturacion suave: nada de oversampling, el objetivo es
-            // calidez sutil, no un gancho armonico fuerte como en el
-            // Overdrive/Distortion/Fuzz
+            // Preamp is a two-stage, low-gain tube-like circuit: gentle first
+            // stage, asymmetric second stage, then tone stack. It stays at
+            // native rate and intentionally never behaves like hard distortion.
             const float driven = channelData[sample] * drive;
-            const float saturated = std::tanh (driven) / std::tanh (juce::jmax (drive, 1.0f));
+            const float stage1 = fast_tanh (driven * 0.72f);
+            const float biased = stage1 * 1.25f + 0.055f * stage1 * stage1;
+            const float saturated = fast_tanh (biased * 0.92f);
 
             float shaped = t.bass.processSample (saturated);
             shaped = t.treble.processSample (shaped);

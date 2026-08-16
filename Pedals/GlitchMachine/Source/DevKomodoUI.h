@@ -6,6 +6,53 @@
 #include <algorithm>
 #include <cmath>
 
+
+class DevKomodoKnobLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPosProportional, float rotaryStartAngle,
+                           float rotaryEndAngle, juce::Slider& slider) override
+    {
+        auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
+        auto knobArea = area.reduced (8.0f, 18.0f);
+        knobArea.removeFromTop (10.0f);
+        const float diameter = juce::jmin (knobArea.getWidth(), knobArea.getHeight());
+        auto knob = juce::Rectangle<float> (0, 0, diameter, diameter).withCentre (knobArea.getCentre());
+        const float radius = knob.getWidth() * 0.5f;
+        const auto centre = knob.getCentre();
+
+        g.setColour (juce::Colour::fromRGB (18, 20, 25));
+        g.fillEllipse (knob);
+        g.setColour (juce::Colour::fromRGB (62, 66, 76));
+        g.drawEllipse (knob, 1.0f);
+
+        const float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
+                           rotaryStartAngle, angle, true);
+        g.setColour (juce::Colour::fromRGB (111, 218, 175));
+        g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        const float pointerLength = radius * 0.62f;
+        juce::Path pointer;
+        pointer.addRoundedRectangle (-1.5f, -pointerLength, 3.0f, pointerLength * 0.42f, 1.5f);
+        g.setColour (juce::Colours::white);
+        g.fillPath (pointer, juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
+
+        auto label = slider.getName();
+        if (label.isEmpty())
+            label = slider.getComponentID();
+        if (label.isNotEmpty())
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.78f));
+            g.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)));
+            g.drawFittedText (label.toUpperCase(), area.removeFromTop (20).toNearestInt(),
+                              juce::Justification::centred, 1);
+        }
+    }
+};
+
 // Shared, header-only commercial-style editor used by the pedals that do not
 // need a bespoke visualizer. It intentionally lives inside each plugin's
 // Source directory when installed so the existing CMake/build structure stays
@@ -31,7 +78,11 @@ public:
         title.setJustificationType (juce::Justification::centredLeft);
         addAndMakeVisible (title);
 
-        brand.setText ("DEVKOMODO", juce::dontSendNotification);
+        const bool premiumProduct = name.toUpperCase().contains ("CLEANUP PRO")
+                                  || name.toUpperCase().contains ("TONE SCULPTOR")
+                                  || name.toUpperCase().contains ("AMPSIM")
+                                  || name.toUpperCase().contains ("CONVOLUTION REVERB");
+        brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
         brand.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
         brand.setColour (juce::Label::textColourId, accent.withAlpha (0.9f));
         brand.setJustificationType (juce::Justification::centredRight);
@@ -53,6 +104,10 @@ public:
 
         if (apvts.getParameter ("INSTRUMENT") != nullptr)
         {
+            instrumentButton.setColour (juce::TextButton::buttonColourId, accent.withAlpha (0.18f));
+            instrumentButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.30f));
+            instrumentButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+            instrumentButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
             instrumentButton.setButtonText ("GUITAR");
             instrumentButton.setClickingTogglesState (false);
             instrumentButton.onClick = [this]
@@ -121,12 +176,58 @@ public:
 
                 k.slider = std::make_unique<juce::Slider> (juce::Slider::RotaryHorizontalVerticalDrag,
                                                             juce::Slider::TextBoxBelow);
-                k.slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 86, 20);
+                k.slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 92, 22);
+                k.slider->setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.90f));
+                k.slider->setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB (14, 16, 20));
+                k.slider->setColour (juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB (55, 60, 70));
+                k.slider->setColour (juce::Slider::textBoxHighlightColourId, accent.withAlpha (0.25f));
                 k.slider->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                const auto upperID = id.toUpperCase();
+                const bool showPercent = (upperID == "MIX" || upperID == "DEPTH" || upperID == "WIDTH"
+                                       || upperID == "WET" || upperID == "FEEDBACK" || upperID == "AMOUNT"
+                                       || upperID == "SCOOP" || upperID == "TRANS" || upperID == "PULSEWIDTH");
+                if (showPercent && ranged->getNormalisableRange().start == 0.0f
+                    && ranged->getNormalisableRange().end <= 1.0f)
+                {
+                    k.slider->setNumDecimalPlacesToDisplay (0);
+                    k.slider->setTextFromValueFunction = [] (double value)
+                    { return juce::String (juce::roundToInt ((float) value * 100.0f)) + "%"; };
+                    k.slider->setValueFromTextFunction = [] (const juce::String& text)
+                    { return text.trimCharactersAtEnd ("% ").getDoubleValue() * 0.01; };
+                }
+                else
+                {
+                    k.slider->setTextValueSuffix (ranged->label);
+                }
                 k.slider->setScrollWheelEnabled (false);
-                k.slider->setMouseDragSensitivity (140);
+                // 320 px gives noticeably finer control than the old 220 px
+                // while still feeling quick on 0-10 amp-style controls.
+                k.slider->setMouseDragSensitivity (320);
+                k.slider->setVelocityBasedMode (false);
+                k.slider->setNumDecimalPlacesToDisplay (ranged->getNumDecimalPlacesToDisplay());
+                if (! showPercent)
+                {
+                    const auto upper = id.toUpperCase();
+                    const auto range = ranged->getNormalisableRange();
+                    if (upper.contains ("FREQ") || upper.contains ("TUNING"))
+                        k.slider->setTextValueSuffix (" Hz");
+                    else if (upper.contains ("TIME") || upper.contains ("DELAY") || upper.contains ("ATTACK")
+                          || upper.contains ("RELEASE") || upper.contains ("DECAY") || upper.contains ("GLIDE"))
+                        k.slider->setTextValueSuffix (" ms");
+                    else if (range.start >= 0.0f && range.end <= 10.0f
+                          && (upper.contains ("DRIVE") || upper == "GAIN" || upper == "LEVEL"
+                              || upper == "BASS" || upper == "MID" || upper == "TREBLE"
+                              || upper == "PRESENCE" || upper == "TONE" || upper == "CHARACTER"))
+                        k.slider->setTextValueSuffix (" / 10");
+                    else if (upper.contains ("LEVEL") || upper.contains ("OUTPUT") || upper.contains ("MAKEUP")
+                          || upper.contains ("THRESH") || upper.contains ("GATE") || upper == "GAIN"
+                          || upper.contains ("BODY") || upper.contains ("AIR"))
+                        k.slider->setTextValueSuffix (" dB");
+                }
+                k.slider->setName (prettifyID (id));
                 k.slider->setDoubleClickReturnValue (true,
                     ranged->getNormalisableRange().convertFrom0to1 (ranged->getDefaultValue()));
+                k.slider->setLookAndFeel (&knobLookAndFeel);
                 k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                     (apvts, id, *k.slider);
 
@@ -141,6 +242,8 @@ public:
     ~DevKomodoUniversalEditor() override
     {
         stopTimer();
+        for (auto& k : knobs)
+            if (k.slider != nullptr) k.slider->setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -152,6 +255,25 @@ public:
         g.fillRoundedRectangle (outer, 13.0f);
         g.setColour (juce::Colour::fromRGB (55, 58, 68));
         g.drawRoundedRectangle (outer, 13.0f, 1.0f);
+
+        // Static card shading is paint-only; it adds no DSP cost.
+        auto cards = outer.withTrimmedTop (110).reduced (10.0f, 4.0f);
+        const int cardCount = juce::jmax (1, (int) knobs.size() + (int) choices.size());
+        const int columns = cardCount <= 3 ? cardCount : (cardCount <= 6 ? 3 : 4);
+        const int rows = (cardCount + columns - 1) / columns;
+        const int gap = 8;
+        const float cardW = (cards.getWidth() - gap * (columns - 1)) / (float) columns;
+        const float cardH = juce::jmax (58.0f, (cards.getHeight() - gap * (rows - 1)) / (float) rows);
+        for (int i = 0; i < cardCount; ++i)
+        {
+            const int row = i / columns, col = i % columns;
+            auto card = juce::Rectangle<float> (cards.getX() + col * (cardW + gap),
+                                                 cards.getY() + row * (cardH + gap), cardW, cardH);
+            g.setColour (juce::Colour::fromRGB (22, 24, 29));
+            g.fillRoundedRectangle (card, 9.0f);
+            g.setColour (juce::Colour::fromRGB (48, 52, 61));
+            g.drawRoundedRectangle (card, 9.0f, 1.0f);
+        }
 
         auto header = outer.removeFromTop (64.0f);
         g.setColour (juce::Colour::fromRGB (21, 23, 28));
@@ -165,12 +287,14 @@ public:
         g.setColour (juce::Colour::fromRGB (65, 68, 77));
         g.drawRoundedRectangle (meter, 7.0f, 1.0f);
 
-        const float level = 0.12f;
-        g.setColour (accent.withAlpha (0.22f));
-        g.fillRoundedRectangle (meter.withWidth (meter.getWidth() * level), 7.0f);
+        // This is intentionally a status strip, not a fake audio meter. The
+        // generic editor has no safe real-time access to the processor buffer,
+        // so showing a hard-coded level would be misleading.
+        g.setColour (accent.withAlpha (0.16f));
+        g.fillRoundedRectangle (meter.withWidth (juce::jmin (meter.getWidth() * 0.18f, 42.0f)), 7.0f);
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
-        g.drawText ("INPUT", meter.reduced (8.0f, 0.0f), juce::Justification::left);
+        g.drawText ("READY", meter.reduced (8.0f, 0.0f), juce::Justification::left);
 
         g.setColour (juce::Colours::white.withAlpha (0.30f));
         g.setFont (juce::Font (juce::FontOptions (9.0f)));
@@ -183,12 +307,18 @@ public:
         auto bounds = getLocalBounds().reduced (18, 14);
         auto header = bounds.removeFromTop (62);
 
-        // Header: title, brand, preset and optional instrument selector.
-        title.setBounds (header.removeFromLeft (juce::jmax (180, header.getWidth() / 3)));
+        // Responsive header: the old left/right carving could overlap at the
+        // minimum editor width (title + brand + preset + instrument exceeded
+        // the available width). Keep the two action controls on the right and
+        // stack the title/brand on the left so every size remains usable.
+        auto rightHeader = header.removeFromRight (instrumentButton.isVisible() ? 286 : 176);
         if (instrumentButton.isVisible())
-            instrumentButton.setBounds (header.removeFromRight (108).reduced (3, 10));
-        presetBox.setBounds (header.removeFromRight (170).reduced (3, 10));
-        brand.setBounds (header.removeFromRight (92));
+            instrumentButton.setBounds (rightHeader.removeFromRight (108).reduced (3, 10));
+        presetBox.setBounds (rightHeader.removeFromRight (170).reduced (3, 10));
+
+        auto titleArea = header.reduced (2, 2);
+        title.setBounds (titleArea.removeFromTop (34));
+        brand.setBounds (titleArea);
 
         bounds.removeFromTop (12);
         auto footer = bounds.removeFromBottom (30);
@@ -216,8 +346,8 @@ public:
             const int columns = count <= 3 ? count : (count <= 6 ? 3 : 4);
             const int rows = (count + columns - 1) / columns;
             const int gap = 8;
-            const int cellW = juce::jmax (100, (bounds.getWidth() - gap * (columns - 1)) / columns);
-            const int cellH = juce::jmax (94, (bounds.getHeight() - gap * (rows - 1)) / rows);
+            const int cellW = juce::jmax (92, (bounds.getWidth() - gap * (columns - 1)) / columns);
+            const int cellH = juce::jmax (82, (bounds.getHeight() - gap * (rows - 1)) / rows);
 
             for (int i = 0; i < count; ++i)
             {
@@ -317,9 +447,9 @@ private:
         const bool drive = key.contains ("DRIVE") || key.contains ("FUZZ") || key.contains ("DISTORT")
                         || key.contains ("SATURATION") || key.contains ("BIAS") || key == "GAIN";
         const bool wet = key.contains ("MIX") || key.contains ("DEPTH") || key.contains ("FEEDBACK")
-                      || key.contains ("WIDTH") || key.contains ("RESONANCE") || key.contains ("DRIFT");
+                      || key.contains ("WIDTH") || key.contains ("RESONANCE");
         const bool time = key.contains ("TIME") || key.contains ("DELAY") || key.contains ("RELEASE")
-                       || key.contains ("SWELL") || key.contains ("DECAY") || key.contains ("RATE");
+                       || key.contains ("SWELL") || key.contains ("DECAY");
         const bool tone = key.contains ("TONE") || key.contains ("TREBLE") || key.contains ("HIGH")
                        || key.contains ("PRESENCE") || key.contains ("FREQUENCY");
         const bool level = key.contains ("LEVEL") || key.contains ("OUTPUT") || key.contains ("MAKEUP");
@@ -330,34 +460,27 @@ private:
             case 0: // Factory Reset: defaults.
                 break;
             case 1: // Clean / controlled.
-                if (drive) value *= 0.42f;
-                if (wet) value = juce::jmap (value, 0.0f, 1.0f, 0.12f, 0.46f);
-                if (time) value = juce::jmap (value, 0.0f, 1.0f, 0.18f, 0.52f);
-                if (tone) value = juce::jmap (value, 0.0f, 1.0f, 0.45f, 0.68f);
-                if (level) value = juce::jmap (value, 0.0f, 1.0f, 0.38f, 0.62f);
+                if (drive) value *= 0.45f;
+                if (wet) value = juce::jmap (value, 0.0f, 1.0f, 0.15f, 0.45f);
+                if (tone) value = juce::jmap (value, 0.0f, 1.0f, 0.42f, 0.62f);
+                if (level) value = juce::jmap (value, 0.0f, 1.0f, 0.45f, 0.58f);
                 break;
-            case 2: // Punch / rhythmic.
-                if (drive) value = juce::jmax (value, 0.70f);
-                if (wet) value = juce::jlimit (0.0f, 1.0f, value * 1.18f);
-                if (time) value = juce::jmap (value, 0.0f, 1.0f, 0.52f, 0.85f);
-                if (gate) value = juce::jlimit (0.0f, 1.0f, value * 0.78f);
+            case 2: // Punch.
+                if (drive) value = juce::jmax (value, 0.65f);
+                if (wet) value = juce::jlimit (0.0f, 1.0f, value * 1.15f);
+                if (time) value *= 0.75f;
+                if (gate) value = juce::jlimit (0.0f, 1.0f, value * 0.85f);
                 break;
             case 3: // Wide / ambient.
-                if (wet) value = juce::jmax (value, 0.74f);
-                if (time) value = juce::jmax (value, 0.56f);
-                if (tone) value = juce::jmin (1.0f, value * 1.08f);
+                if (wet) value = juce::jmax (value, 0.72f);
+                if (time) value = juce::jmax (value, 0.55f);
+                if (tone) value = juce::jmin (1.0f, value * 1.10f);
                 break;
-            case 4: // Modern / aggressive.
+            default: // Extreme / modern.
                 if (drive) value = juce::jmax (value, 0.82f);
                 if (wet) value = juce::jmax (value, 0.80f);
                 if (tone) value = juce::jmin (1.0f, value * 1.18f);
-                if (level) value = juce::jlimit (0.0f, 1.0f, value * 0.88f);
-                break;
-            default: // Extreme / market.
-                if (drive) value = juce::jmax (value, 0.90f);
-                if (wet) value = juce::jmax (value, 0.92f);
-                if (time) value = juce::jmax (value, 0.80f);
-                if (level) value = juce::jlimit (0.0f, 1.0f, value * 0.82f);
+                if (level) value = juce::jlimit (0.0f, 1.0f, value * 0.90f);
                 break;
         }
 
@@ -366,16 +489,18 @@ private:
 
     std::vector<Preset> makePresets() const
     {
-        juce::StringArray names { "INIT", "PULSE", "RUSH", "DRIFT", "CHAOS", "NOVA" };
+        juce::StringArray names { "INIT", "CLEAN", "PUNCH", "WIDE", "EXTREME" };
         const auto category = upper (name);
-        if (category.contains ("REVERB")) names = juce::StringArray { "INIT", "ROOM", "PLATE", "HALL", "ARENA", "ECHO" };
-        else if (category.contains ("DELAY")) names = juce::StringArray { "INIT", "SLAP", "ECHO", "WIDE", "TAPE", "HYPER" };
-        else if (category.contains ("CHORUS") || category.contains ("FLANGER") || category.contains ("PHASER") || category.contains ("VIBRATO")) names = juce::StringArray { "INIT", "CLASSIC", "MOTION", "WIDE", "JET", "AURORA" };
-        else if (category.contains ("FUZZ") || category.contains ("DISTORT") || category.contains ("OVERDRIVE")) names = juce::StringArray { "INIT", "CRUNCH", "RHYTHM", "LEAD", "HEAVY", "TITAN" };
-        else if (category.contains ("COMPRESS")) names = juce::StringArray { "INIT", "GLUE", "PUNCH", "SMOOTH", "LIMIT", "ULTRA" };
-        else if (category.contains ("EQ")) names = juce::StringArray { "INIT", "TIGHT", "BRIGHT", "PRESENCE", "SCULPT", "EDGE" };
-        else if (category.contains ("FILTER")) names = juce::StringArray { "INIT", "FUNK", "QUACK", "SWEEP", "SYNTH", "VOLT" };
-        else if (category.contains ("GLITCH")) names = juce::StringArray { "INIT", "PULSE", "RUSH", "DRIFT", "CHAOS", "NOVA" };
+        if (category.contains ("REVERB")) names = juce::StringArray { "INIT", "ROOM", "PLATE", "HALL", "ARENA" };
+        else if (category.contains ("DELAY")) names = juce::StringArray { "INIT", "SLAP", "ECHO", "WIDE", "TAPE" };
+        else if (category.contains ("CHORUS") || category.contains ("FLANGER") || category.contains ("PHASER") || category.contains ("VIBRATO")) names = juce::StringArray { "INIT", "CLASSIC", "MOTION", "WIDE", "JET" };
+        else if (category.contains ("FUZZ") || category.contains ("DISTORT") || category.contains ("OVERDRIVE")) names = juce::StringArray { "INIT", "CRUNCH", "RHYTHM", "LEAD", "HEAVY" };
+        else if (category.contains ("COMPRESS")) names = juce::StringArray { "INIT", "GLUE", "PUNCH", "SMOOTH", "LIMIT" };
+        else if (category.contains ("EQ")) names = juce::StringArray { "INIT", "TIGHT", "BRIGHT", "PRESENCE", "SCULPT" };
+        else if (category.contains ("FILTER")) names = juce::StringArray { "INIT", "FUNK", "QUACK", "SWEEP", "SYNTH" };
+        else if (category.contains ("CLEANUP PRO")) names = juce::StringArray { "INIT", "VOCAL", "GUITAR", "PUNCH", "SURGICAL" };
+        else if (category.contains ("TONE SCULPTOR")) names = juce::StringArray { "INIT", "WARM", "BRIGHT", "BODY", "MODERN" };
+        else if (category.contains ("AMPSIM")) names = juce::StringArray { "INIT", "CLEAN", "CRUNCH", "LEAD", "MODERN" };
 
         std::vector<Preset> result;
         result.reserve ((size_t) names.size());
@@ -394,6 +519,53 @@ private:
                                                         defaultNormalised (*ranged),
                                                         presetIndex));
             }
+            auto setPresetValue = [&] (const juce::String& id, float actualValue)
+            {
+                for (auto& [parameterId, normalised] : p.values)
+                    if (parameterId == id)
+                        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (processorRef.getParameter (id)))
+                            normalised = parameter->getNormalisableRange().convertTo0to1 (actualValue);
+            };
+
+            if (category == "CLEANUP PRO" && presetIndex > 0)
+            {
+                static constexpr float values[4][4] = {
+                    { -45.0f, 5500.0f, 0.35f, 0.25f },
+                    { -50.0f, 4500.0f, 0.15f, 0.55f },
+                    { -42.0f, 5000.0f, 0.20f, 0.80f },
+                    { -38.0f, 6500.0f, 0.55f, 0.15f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("GATE", v[0]); setPresetValue ("DEESSF", v[1]);
+                setPresetValue ("DEESSA", v[2]); setPresetValue ("TRANS", v[3]);
+            }
+            else if (category == "TONE SCULPTOR" && presetIndex > 0)
+            {
+                static constexpr float values[4][6] = {
+                    { 2.0f, 4.0f, 3.0f, -1.0f, 1.0f, -1.0f },
+                    { 3.0f, 7.0f, -1.0f, 3.0f, 1.0f, -1.0f },
+                    { 4.0f, 4.5f, 5.0f, 0.0f, 1.0f, -1.0f },
+                    { 6.0f, 6.5f, 1.0f, 4.0f, 0.90f, -2.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("DRIVE", v[0]); setPresetValue ("TONE", v[1]);
+                setPresetValue ("BODY", v[2]); setPresetValue ("AIR", v[3]);
+                setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
+            }
+            else if (category == "AMPSIM" && presetIndex > 0)
+            {
+                static constexpr float values[4][7] = {
+                    { 1.5f, 0.0f, 5.0f, 5.5f, 5.5f, 4.5f, 6.0f },
+                    { 4.0f, 1.0f, 5.5f, 6.0f, 5.0f, 5.5f, 6.0f },
+                    { 6.5f, 3.0f, 5.0f, 4.0f, 6.5f, 6.5f, 5.5f },
+                    { 8.0f, 4.0f, 4.5f, 5.0f, 7.0f, 7.0f, 5.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("GAIN", v[0]);
+                if (auto* voice = processorRef.getParameter ("VOICE"))
+                    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (voice))
+                        for (auto& [id, normalised] : p.values) if (id == "VOICE") normalised = choice->convertTo0to1 ((int) v[1]);
+                setPresetValue ("BASS", v[2]); setPresetValue ("MID", v[3]); setPresetValue ("TREBLE", v[4]);
+                setPresetValue ("PRESENCE", v[5]); setPresetValue ("LEVEL", v[6]);
+            }
+
             result.push_back (std::move (p));
         }
         return result;
@@ -414,6 +586,7 @@ private:
     juce::Label title, brand;
     juce::ComboBox presetBox;
     juce::TextButton instrumentButton;
+    DevKomodoKnobLookAndFeel knobLookAndFeel;
     std::vector<Knob> knobs;
     std::vector<Choice> choices;
     std::vector<Toggle> toggles;

@@ -4,6 +4,7 @@
 #include <array>
 #include <memory>
 #include <cmath>
+#include "DevKomodoUI.h"
 
 template <typename Processor>
 class SynthPedalEditor final : public juce::AudioProcessorEditor, private juce::Timer
@@ -17,7 +18,12 @@ public:
         setOpaque (true); setResizable (true, true); setResizeLimits (760, 590, 1280, 820); setSize (900, 650);
         title.setText (titleText, juce::dontSendNotification); title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold))); title.setColour (juce::Label::textColourId, juce::Colours::white); addAndMakeVisible (title);
         subtitle.setText ("MONOPHONIC AUDIO  •  PITCH-LOCK SYNTH", juce::dontSendNotification); subtitle.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold))); subtitle.setColour (juce::Label::textColourId, accent.withAlpha (0.9f)); addAndMakeVisible (subtitle);
-        presetBox.addItem ("MANUAL", 1); for (int i=0;i<(int)presets.size();++i) presetBox.addItem (presets[(size_t)i].name, i+2); presetBox.setSelectedId (1, juce::dontSendNotification);
+        presetBox.addItem ("MANUAL", 1);
+        waveformLabel.setText ("WAVEFORM", juce::dontSendNotification);
+        waveformLabel.setJustificationType (juce::Justification::centred);
+        waveformLabel.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
+        waveformLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.78f));
+        addAndMakeVisible (waveformLabel); for (int i=0;i<(int)presets.size();++i) presetBox.addItem (presets[(size_t)i].name, i+2); presetBox.setSelectedId (1, juce::dontSendNotification);
         presetBox.onChange=[this]{ const int id=presetBox.getSelectedId(); if(id>=2 && id-2<(int)presets.size()) loadPreset(presets[(size_t)id-2]); }; addAndMakeVisible(presetBox);
         configureChoice (waveform, waveformAttachment, "WAVEFORM", { "Sine", "Saw", "Square", "Triangle", "Pulse", "Soft Saw", "Super Saw", "Organ", "Custom" });
         configureSlider(octave,octaveAttachment,"OCTAVE"," oct"); configureSlider(glide,glideAttachment,"GLIDE"," ms"); configureSlider(detune,detuneAttachment,"DETUNE"," ct");
@@ -26,7 +32,11 @@ public:
         configureSlider(sub,subAttachment,"SUBLEVEL",""); configureSlider(gate,gateAttachment,"GATE"," dB"); configureSlider(mix,mixAttachment,"MIX",""); configureSlider(level,levelAttachment,"LEVEL"," dB");
         startTimerHz(20);
     }
-    ~SynthPedalEditor() override { stopTimer(); }
+    ~SynthPedalEditor() override {
+        stopTimer();
+        for (auto* slider : { &octave, &glide, &detune, &tuning, &pitchCorrection, &pulseWidth, &h2, &h3, &h4, &h5, &sub, &gate, &mix, &level })
+            slider->setLookAndFeel (nullptr);
+    }
 
     void paint(juce::Graphics& g) override
     {
@@ -43,21 +53,64 @@ public:
 
     void resized() override
     {
-        auto area=getLocalBounds().reduced(28,18); auto header=area.removeFromTop(48); title.setBounds(header.removeFromLeft(230)); subtitle.setBounds(header.removeFromLeft(260).withY(17).withHeight(20)); presetBox.setBounds(header.removeFromRight(190).withY(6).withHeight(28));
+        auto area=getLocalBounds().reduced(28,18);
+        auto header=area.removeFromTop(48);
+        title.setBounds(header.removeFromLeft(230));
+        subtitle.setBounds(header.removeFromLeft(250).withY(17).withHeight(20));
+        presetBox.setBounds(header.removeFromRight(190).withY(6).withHeight(28));
+        auto waveHeader = header.removeFromRight(150);
+        waveformLabel.setBounds(waveHeader.removeFromTop(14));
+        waveform.setBounds(waveHeader.withY(waveHeader.getY() + 14).withHeight(28));
         area.removeFromTop(105); area.removeFromBottom(18); area.reduce(4,4);
         auto row1=area.removeFromTop(128); auto row2=area.removeFromTop(128); auto row3=area.removeFromTop(128); auto row4=area;
-        place4(row1,waveform,octave,glide,detune); place4(row2,tuning,pitchCorrection,pulseWidth,sub); place4(row3,h2,h3,h4,h5); place4(row4,gate,mix,level);
+        place4(row1,octave,glide,detune,tuning);
+        place4(row2,pitchCorrection,pulseWidth,h2,h3);
+        place4(row3,h4,h5,sub,gate);
+        mix.setBounds(row4.removeFromLeft(row4.getWidth()/2).reduced(7));
+        level.setBounds(row4.reduced(7));
     }
 
 private:
     void place4(juce::Rectangle<int> r, juce::Component& a, juce::Component& b, juce::Component& c, juce::Component& d){ int w=r.getWidth()/4; a.setBounds(r.removeFromLeft(w).reduced(7)); b.setBounds(r.removeFromLeft(w).reduced(7)); c.setBounds(r.removeFromLeft(w).reduced(7)); d.setBounds(r.reduced(7)); }
-    template <typename Attachment> void configureSlider(juce::Slider& slider,std::unique_ptr<Attachment>& attachment,const char* id,const char* suffix){ slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); slider.setTextBoxStyle(juce::Slider::TextBoxBelow,false,82,20); slider.setTextValueSuffix(suffix); slider.setName(id); slider.setTooltip(id); slider.setDoubleClickReturnValue(true,0.0); slider.setScrollWheelEnabled(false); addAndMakeVisible(slider); attachment=std::make_unique<Attachment>(processor.apvts,id,slider); }
-    void configureChoice(juce::ComboBox& box,std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attachment,const char* id,juce::StringArray choices){ box.addItemList(choices,1); box.setTooltip(id); addAndMakeVisible(box); attachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.apvts,id,box); }
+    template <typename Attachment> void configureSlider(juce::Slider& slider,std::unique_ptr<Attachment>& attachment,const char* id,const char* suffix){
+        slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setTextBoxStyle(juce::Slider::TextBoxBelow,false,92,22);
+        slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.92f));
+        slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB(14,16,20));
+        slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB(55,60,70));
+        slider.setTextValueSuffix(suffix);
+        const juce::String upperId = juce::String (id).toUpperCase();
+        const bool percent = upperId == "MIX" || upperId == "PULSEWIDTH" || upperId == "PITCHCORR"
+                          || upperId == "H2" || upperId == "H3" || upperId == "H4" || upperId == "H5" || upperId == "SUBLEVEL";
+        if (percent)
+        {
+            slider.setNumDecimalPlacesToDisplay (0);
+            slider.setTextFromValueFunction = [] (double value)
+            { return juce::String (juce::roundToInt ((float) value * 100.0f)) + "%"; };
+            slider.setValueFromTextFunction = [] (const juce::String& text)
+            { return text.trimCharactersAtEnd ("% ").getDoubleValue() * 0.01; };
+        }
+        slider.setName(id);
+        slider.setTooltip(id);
+        slider.setScrollWheelEnabled(false);
+        slider.setMouseDragSensitivity (320);
+        slider.setVelocityBasedMode (false);
+        slider.setLookAndFeel (&knobLookAndFeel);
+        if (auto* parameter = processor.apvts.getParameter(id))
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+                slider.setDoubleClickReturnValue(true, ranged->getNormalisableRange().convertFrom0to1(ranged->getDefaultValue()));
+        }
+        addAndMakeVisible(slider);
+        attachment=std::make_unique<Attachment>(processor.apvts,id,slider);
+    }
+    void configureChoice(juce::ComboBox& box,std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attachment,const char* id,juce::StringArray choices){ box.setName(id); box.addItemList(choices,1); box.setTooltip(id); addAndMakeVisible(box); attachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.apvts,id,box); }
     void setParameter(const char* id,float value){ if(auto* p=processor.apvts.getParameter(id)) p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(value)); }
-    void loadPreset(const Preset& p){ setParameter("WAVEFORM",(float)p.waveform / 8.0f); setParameter("OCTAVE",(float)p.octave); setParameter("GLIDE",p.glide); setParameter("DETUNE",p.detune); setParameter("SUBLEVEL",p.sub); setParameter("GATE",p.gate); setParameter("MIX",p.mix); setParameter("LEVEL",p.level); }
+    void loadPreset(const Preset& p){ setParameter("WAVEFORM", (float) p.waveform); setParameter("OCTAVE",(float)p.octave); setParameter("GLIDE",p.glide); setParameter("DETUNE",p.detune); setParameter("SUBLEVEL",p.sub); setParameter("GATE",p.gate); setParameter("MIX",p.mix); setParameter("LEVEL",p.level); }
     void timerCallback() override{ const float f=processor.getDetectedFrequency(); if(f>0.0f&&std::isfinite(f)){ detectedFrequency=juce::String(f,1)+" Hz"; const float midi=69.0f+12.0f*std::log2(f/440.0f); const int n=juce::jlimit(0,127,(int)std::lround(midi)); static constexpr const char* names[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}; detectedNote=juce::String(names[n%12])+juce::String(n/12-1); } else {detectedFrequency="-- Hz"; detectedNote.clear();} repaint(); }
+    DevKomodoKnobLookAndFeel knobLookAndFeel;
     Processor& processor; std::array<Preset,6> presets; juce::Colour accent;
-    juce::Label title,subtitle; juce::ComboBox presetBox,waveform;
+    juce::Label title,subtitle,waveformLabel; juce::ComboBox presetBox,waveform;
     juce::Slider octave,glide,detune,tuning,pitchCorrection,pulseWidth,h2,h3,h4,h5,sub,gate,mix,level;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveformAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> octaveAttachment,glideAttachment,detuneAttachment,tuningAttachment,pitchCorrectionAttachment,pulseWidthAttachment,h2Attachment,h3Attachment,h4Attachment,h5Attachment,subAttachment,gateAttachment,mixAttachment,levelAttachment;

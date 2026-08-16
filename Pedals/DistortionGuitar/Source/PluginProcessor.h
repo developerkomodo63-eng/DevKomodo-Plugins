@@ -46,8 +46,6 @@ private:
     // el historial de L y R)
     std::vector<juce::dsp::IIR::Filter<float>> scoopFilters;
 
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
     juce::AudioBuffer<float> dryBuffer;

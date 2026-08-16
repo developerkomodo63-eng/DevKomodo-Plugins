@@ -190,9 +190,9 @@ public:
                     && ranged->getNormalisableRange().end <= 1.0f)
                 {
                     k.slider->setNumDecimalPlacesToDisplay (0);
-                    k.slider->setTextFromValueFunction = [] (double value)
+                    k.slider->textFromValueFunction = [] (double value)
                     { return juce::String (juce::roundToInt ((float) value * 100.0f)) + "%"; };
-                    k.slider->setValueFromTextFunction = [] (const juce::String& text)
+                    k.slider->valueFromTextFunction = [] (const juce::String& text)
                     { return text.trimCharactersAtEnd ("% ").getDoubleValue() * 0.01; };
                 }
                 else
@@ -204,7 +204,17 @@ public:
                 // while still feeling quick on 0-10 amp-style controls.
                 k.slider->setMouseDragSensitivity (320);
                 k.slider->setVelocityBasedMode (false);
-                k.slider->setNumDecimalPlacesToDisplay (ranged->getNumDecimalPlacesToDisplay());
+                
+                // RangedAudioParameter does not expose its display precision in JUCE 8.
+                // Infer a lightweight, stable precision from the parameter interval.
+                {
+                    const auto range = ranged->getNormalisableRange();
+                    const auto interval = std::abs (range.interval);
+                    int decimals = 0;
+                    if (interval > 0.0f && interval < 1.0f)
+                        decimals = interval >= 0.1f ? 1 : (interval >= 0.01f ? 2 : 3);
+                    k.slider->setNumDecimalPlacesToDisplay (decimals);
+                }
                 if (! showPercent)
                 {
                     const auto upper = id.toUpperCase();
@@ -533,8 +543,8 @@ private:
             {
                 for (auto& [parameterId, normalised] : p.values)
                     if (parameterId == id)
-                        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (findParameterById (id)))
-                            normalised = parameter->getNormalisableRange().convertTo0to1 (actualValue);
+                        if (auto* targetParameter = dynamic_cast<juce::RangedAudioParameter*> (findParameterById (id)))
+                            normalised = targetParameter->getNormalisableRange().convertTo0to1 (actualValue);
             };
 
             if (category == "CLEANUP PRO" && presetIndex > 0)
@@ -571,7 +581,7 @@ private:
                 setPresetValue ("GAIN", v[0]);
                 if (auto* voice = findParameterById ("VOICE"))
                     if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (voice))
-                        for (auto& [id, normalised] : p.values) if (id == "VOICE") normalised = choice->convertTo0to1 ((int) v[1]);
+                        for (auto& [id, normalised] : p.values) if (id == "VOICE") normalised = choice->convertTo0to1 (static_cast<float> (v[1]));
                 setPresetValue ("BASS", v[2]); setPresetValue ("MID", v[3]); setPresetValue ("TREBLE", v[4]);
                 setPresetValue ("PRESENCE", v[5]); setPresetValue ("LEVEL", v[6]);
             }

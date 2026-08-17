@@ -46,6 +46,13 @@ private:
     };
     std::vector<ChannelTone> tones;
 
+    // Same DC-blocking fix as Saturator: the Tube-style second stage below
+    // (biased = stage1*1.25 + 0.055*stage1^2) has an uncompensated quadratic
+    // term, which pushes the signal's average away from zero -- audible as
+    // a low-frequency rumble, worse at higher Drive.
+    std::vector<float> dcX1, dcY1;
+    float dcR = 0.995f;
+
     juce::AudioBuffer<float> dryBuffer;
     double currentSampleRate = 44100.0;
 

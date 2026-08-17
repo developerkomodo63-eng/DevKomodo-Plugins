@@ -37,7 +37,11 @@ void ToneSculptorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 {
     juce::ignoreUnused (samplesPerBlock);
     fs = sampleRate;
-    lowState.assign ((size_t) juce::jmax (1, getTotalNumOutputChannels()), 0.0f);
+    const int numChannels = juce::jmax (1, getTotalNumOutputChannels());
+    lowState.assign ((size_t) numChannels, 0.0f);
+    dcX1.assign ((size_t) numChannels, 0.0f);
+    dcY1.assign ((size_t) numChannels, 0.0f);
+    dcR = 1.0f - (2.0f * juce::MathConstants<float>::pi * 20.0f / (float) fs);
 }
 
 void ToneSculptorAudioProcessor::releaseResources() {}
@@ -108,6 +112,17 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     driven = fast_tanh (pushed * 1.35f) * 0.92f * driveComp;
                     break;
             }
+
+            // DC blocker: only Tube (case 0) actually introduces an offset,
+            // but running it unconditionally is cheap and harmless for the
+            // other styles.
+            {
+                const float filtered = driven - dcX1[(size_t) ch] + dcR * dcY1[(size_t) ch];
+                dcX1[(size_t) ch] = driven;
+                dcY1[(size_t) ch] = filtered;
+                driven = filtered;
+            }
+
             lowStateCh += (driven - lowStateCh) * lowCoeff;
             const float low = lowStateCh;
             const float high = driven - low;

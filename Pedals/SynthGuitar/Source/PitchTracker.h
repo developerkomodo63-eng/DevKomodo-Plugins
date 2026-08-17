@@ -267,7 +267,15 @@ private:
 
         if (confirmedFrequencyHz <= 0.0f)
         {
-            accept = confidence >= 0.18f;
+            // Cold-start lock. A pick attack / string noise transient can
+            // produce a short, spuriously-strong correlation peak (i.e. a
+            // high, unrelated frequency) for a hop or two before the string
+            // settles into its real pitch. 0.18 was weak enough that a
+            // transient regularly won this test and got "confirmed" as the
+            // note -- that's the random high blip. Raised well above what a
+            // transient click typically scores, while still comfortably
+            // below what a real sustained fundamental scores.
+            accept = confidence >= 0.38f;
         }
         else
         {
@@ -275,9 +283,9 @@ private:
             const float cents = 1200.0f * std::log2 (juce::jmax (ratio, 1.0e-6f));
 
             if (std::abs (cents) < 160.0f)
-                accept = confidence >= 0.10f;
+                accept = confidence >= 0.16f;
             else
-                accept = confidence >= 0.28f;
+                accept = confidence >= 0.40f;
         }
 
         if (accept)

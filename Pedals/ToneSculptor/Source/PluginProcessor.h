@@ -40,5 +40,13 @@ public:
 private:
     double fs = 44100.0;
     std::vector<float> lowState;
+    // Same DC-blocking fix as Saturator/Preamp: Tube style (case 0 below,
+    // biased = pushed + 0.08*pushed^2) has an uncompensated quadratic term
+    // that leaks a low-frequency offset into the signal -- and because that
+    // offset lands entirely in the lowState low-pass band, it also gets
+    // amplified/attenuated by the Body knob. Blocking it before the
+    // low/high split fixes both.
+    std::vector<float> dcX1, dcY1;
+    float dcR = 0.995f;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToneSculptorAudioProcessor)
 };

@@ -30,5 +30,13 @@ private:
     juce::AudioBuffer<float> dryBuffer;
     double sampleRate = 44100.0;
     static float saturate (float x, float mode, float character) noexcept;
+    // One-pole DC blocker applied after saturation. The waveshapers above
+    // (especially Tube mode's quadratic term, and the Color bias that never
+    // gets subtracted back out in Tube/Tape/Diode) push the signal's average
+    // away from zero, which shows up as an unwanted low-frequency/rumble
+    // component. Real tube/tape gear removes this with an output coupling
+    // capacitor; this is the digital equivalent.
+    float dcR = 0.995f;
+    std::array<float, 2> dcX1 {}, dcY1 {};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SaturatorAudioProcessor)
 };

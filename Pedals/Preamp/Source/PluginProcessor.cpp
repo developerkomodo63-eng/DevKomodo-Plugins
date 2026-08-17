@@ -51,6 +51,10 @@ void PreampAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     for (auto& t : tones)
         t.reset();
 
+    dcX1.assign ((size_t) numChannels, 0.0f);
+    dcY1.assign ((size_t) numChannels, 0.0f);
+    dcR = 1.0f - (2.0f * juce::MathConstants<float>::pi * 20.0f / (float) sampleRate);
+
     dryBuffer.setSize (numChannels, samplesPerBlock);
 }
 
@@ -125,7 +129,12 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             const float driven = channelData[sample] * drive;
             const float stage1 = fast_tanh (driven * 0.72f);
             const float biased = stage1 * 1.25f + 0.055f * stage1 * stage1;
-            const float saturated = fast_tanh (biased * 0.92f);
+            const float rawSaturated = fast_tanh (biased * 0.92f);
+
+            // DC blocker: removes the rumble the quadratic term above adds.
+            const float saturated = rawSaturated - dcX1[(size_t) channel] + dcR * dcY1[(size_t) channel];
+            dcX1[(size_t) channel] = rawSaturated;
+            dcY1[(size_t) channel] = saturated;
 
             float shaped = t.bass.processSample (saturated);
             shaped = t.treble.processSample (shaped);

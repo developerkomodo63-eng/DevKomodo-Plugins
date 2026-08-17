@@ -30,6 +30,11 @@ void SaturatorAudioProcessor::prepareToPlay (double sr, int block)
     sampleRate = sr;
     juce::ignoreUnused (block);
     dryBuffer.setSize(getTotalNumOutputChannels(), block, false, false, true);
+    // ~20 Hz high-pass corner for the DC blocker: low enough to leave bass
+    // guitar/synth content untouched, high enough to clear the rumble.
+    dcR = 1.0f - (2.0f * juce::MathConstants<float>::pi * 20.0f / (float) sampleRate);
+    dcX1.fill (0.0f);
+    dcY1.fill (0.0f);
 }
 void SaturatorAudioProcessor::releaseResources() {}
 bool SaturatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -82,8 +87,16 @@ void SaturatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     for (int c = 0; c < in; ++c)
     {
         auto* d = buffer.getWritePointer(c);
+        const size_t ch = (size_t) juce::jlimit (0, 1, c);
         for (int s = 0; s < n; ++s)
-            d[s] = saturate(d[s] * gain, mode, color);
+        {
+            const float y = saturate(d[s] * gain, mode, color);
+            // DC blocker: y[n] - x[n-1] + R*y[n-1]
+            const float filtered = y - dcX1[ch] + dcR * dcY1[ch];
+            dcX1[ch] = y;
+            dcY1[ch] = filtered;
+            d[s] = filtered;
+        }
     }
     const float dryGain=1.0f-mix;
     for(int c=0;c<in;++c)

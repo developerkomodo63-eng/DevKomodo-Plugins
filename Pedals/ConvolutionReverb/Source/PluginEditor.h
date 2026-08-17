@@ -10,6 +10,7 @@ public:
     explicit ConvolutionReverbAudioProcessorEditor (ConvolutionReverbAudioProcessor&);
     ~ConvolutionReverbAudioProcessorEditor() override;
     void resized() override;
+    void paint (juce::Graphics&) override;
 
 private:
     ConvolutionReverbAudioProcessor& audioProcessor;

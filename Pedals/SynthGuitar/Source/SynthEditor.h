@@ -13,9 +13,9 @@ public:
     struct Preset { const char* name; int waveform; int octave; float glide; float detune; float sub; float gate; float mix; float level; };
 
     SynthPedalEditor (Processor& p, juce::String titleText, std::array<Preset, 6> presetValues, juce::Colour accentColour)
-        : AudioProcessorEditor (&p), processor (p), presets (presetValues), accent (accentColour)
+        : AudioProcessorEditor (&p), processor (p), presets (presetValues), accent (accentColour), knobLookAndFeel (accentColour)
     {
-        setOpaque (true); setResizable (true, true); setResizeLimits (760, 590, 1280, 820); setSize (900, 650);
+        setOpaque (true); setResizable (true, true); setResizeLimits (760, 590, 1280, 820);
         title.setText (titleText, juce::dontSendNotification); title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold))); title.setColour (juce::Label::textColourId, juce::Colours::white); addAndMakeVisible (title);
         subtitle.setText ("MONOPHONIC AUDIO  •  PITCH-LOCK SYNTH", juce::dontSendNotification); subtitle.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold))); subtitle.setColour (juce::Label::textColourId, accent.withAlpha (0.9f)); addAndMakeVisible (subtitle);
         presetBox.addItem ("MANUAL", 1);
@@ -31,6 +31,11 @@ public:
         configureSlider(h2,h2Attachment,"H2",""); configureSlider(h3,h3Attachment,"H3",""); configureSlider(h4,h4Attachment,"H4",""); configureSlider(h5,h5Attachment,"H5","");
         configureSlider(sub,subAttachment,"SUBLEVEL",""); configureSlider(gate,gateAttachment,"GATE"," dB"); configureSlider(mix,mixAttachment,"MIX",""); configureSlider(level,levelAttachment,"LEVEL"," dB");
         startTimerHz(20);
+        // setSize must come last: it fires resized() synchronously, and
+        // resized() positions every control created above. Calling it at the
+        // top (as before) laid out an editor with no children yet, so
+        // nothing had real bounds until the host forced a resize.
+        setSize (900, 650);
     }
     ~SynthPedalEditor() override {
         stopTimer();
@@ -40,9 +45,17 @@ public:
 
     void paint(juce::Graphics& g) override
     {
-        g.fillAll(juce::Colour::fromRGB(10,11,15)); auto panel=getLocalBounds().toFloat().reduced(14.0f); g.setColour(juce::Colour::fromRGB(27,29,35)); g.fillRoundedRectangle(panel,14.0f); g.setColour(juce::Colour::fromRGB(58,61,70)); g.drawRoundedRectangle(panel,14.0f,1.0f);
-        auto header=panel.removeFromTop(66.0f); g.setColour(juce::Colour::fromRGB(19,21,26)); g.fillRoundedRectangle(header,12.0f); g.setColour(accent); g.fillRoundedRectangle(header.getX(),header.getY(),4.0f,header.getHeight(),2.0f);
-        auto tracker=panel.removeFromTop(105.0f).reduced(10.0f,8.0f); g.setColour(juce::Colour::fromRGB(14,15,19)); g.fillRoundedRectangle(tracker,10.0f); g.setColour(juce::Colour::fromRGB(55,58,67)); g.drawRoundedRectangle(tracker,10.0f,1.0f);
+        // Panel colours blended toward this pedal's accent (same approach as
+        // the shared DevKomodoUI editor) so this doesn't look like flat grey.
+        const auto bgBase=juce::Colour::fromRGB(10,11,15).interpolatedWith(accent,0.10f);
+        const auto panelBase=juce::Colour::fromRGB(27,29,35).interpolatedWith(accent,0.09f);
+        const auto panelEdge=juce::Colour::fromRGB(58,61,70).interpolatedWith(accent,0.20f);
+        const auto headerBase=juce::Colour::fromRGB(19,21,26).interpolatedWith(accent,0.10f);
+        const auto trackerBase=juce::Colour::fromRGB(14,15,19).interpolatedWith(accent,0.08f);
+        const auto trackerEdge=juce::Colour::fromRGB(55,58,67).interpolatedWith(accent,0.16f);
+        g.fillAll(bgBase); auto panel=getLocalBounds().toFloat().reduced(14.0f); g.setColour(panelBase); g.fillRoundedRectangle(panel,14.0f); g.setColour(panelEdge); g.drawRoundedRectangle(panel,14.0f,1.0f);
+        auto header=panel.removeFromTop(66.0f); g.setColour(headerBase); g.fillRoundedRectangle(header,12.0f); g.setColour(accent); g.fillRoundedRectangle(header.getX(),header.getY(),4.0f,header.getHeight(),2.0f);
+        auto tracker=panel.removeFromTop(105.0f).reduced(10.0f,8.0f); g.setColour(trackerBase); g.fillRoundedRectangle(tracker,10.0f); g.setColour(trackerEdge); g.drawRoundedRectangle(tracker,10.0f,1.0f);
         g.setColour(juce::Colours::white.withAlpha(0.5f)); g.setFont(juce::Font(juce::FontOptions(9.0f,juce::Font::bold))); g.drawText("PITCH TRACKER",tracker.getX()+14,tracker.getY()+9,120,16,juce::Justification::left);
         g.setColour(accent); g.setFont(juce::Font(juce::FontOptions(28.0f,juce::Font::bold))); g.drawText(detectedNote.isEmpty()?"--":detectedNote,tracker.getX()+14,tracker.getY()+25,100,40,juce::Justification::left);
         g.setColour(juce::Colours::white.withAlpha(0.72f)); g.setFont(juce::Font(juce::FontOptions(12.0f))); g.drawText(detectedFrequency.isEmpty()?"-- Hz":detectedFrequency,tracker.getX()+118,tracker.getY()+40,120,20,juce::Justification::left);
@@ -62,7 +75,12 @@ public:
         waveformLabel.setBounds(waveHeader.removeFromTop(14));
         waveform.setBounds(waveHeader.withY(waveHeader.getY() + 14).withHeight(28));
         area.removeFromTop(105); area.removeFromBottom(18); area.reduce(4,4);
-        auto row1=area.removeFromTop(128); auto row2=area.removeFromTop(128); auto row3=area.removeFromTop(128); auto row4=area;
+        // Split the remaining height evenly across the 4 knob rows instead of
+        // giving the first three a fixed 128px each -- at the default window
+        // size that left only ~51px for row 4 (Mix/Level), squashing those
+        // two knobs far smaller than every other control.
+        const int rowH = area.getHeight() / 4;
+        auto row1=area.removeFromTop(rowH); auto row2=area.removeFromTop(rowH); auto row3=area.removeFromTop(rowH); auto row4=area;
         place4(row1,octave,glide,detune,tuning);
         place4(row2,pitchCorrection,pulseWidth,h2,h3);
         place4(row3,h4,h5,sub,gate);

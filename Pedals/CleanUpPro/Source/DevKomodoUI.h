@@ -10,6 +10,11 @@
 class DevKomodoKnobLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
+    explicit DevKomodoKnobLookAndFeel (juce::Colour accentColour = juce::Colour::fromRGB (111, 218, 175))
+        : arcColour (accentColour) {}
+
+    void setArcColour (juce::Colour c) { arcColour = c; }
+
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider& slider) override
@@ -31,7 +36,7 @@ public:
         juce::Path arc;
         arc.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
                            rotaryStartAngle, angle, true);
-        g.setColour (juce::Colour::fromRGB (111, 218, 175));
+        g.setColour (arcColour);
         g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         const float pointerLength = radius * 0.62f;
@@ -51,6 +56,9 @@ public:
                               juce::Justification::centred, 1);
         }
     }
+
+private:
+    juce::Colour arcColour;
 };
 
 // Shared, header-only commercial-style editor used by the pedals that do not
@@ -65,12 +73,11 @@ public:
                               juce::AudioProcessorValueTreeState& state,
                               juce::String productName,
                               juce::Colour accentColour = juce::Colour::fromRGB (111, 218, 175))
-        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour)
+        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour), knobLookAndFeel (accentColour)
     {
         setOpaque (true);
         setResizable (true, true);
         setResizeLimits (560, 330, 1180, 760);
-        setSize (760, 470);
 
         title.setText (name.isNotEmpty() ? name.toUpperCase() : "DEVKOMODO", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
@@ -83,8 +90,12 @@ public:
                                   || name.toUpperCase().contains ("AMPSIM")
                                   || name.toUpperCase().contains ("CONVOLUTION REVERB");
         brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
-        brand.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
-        brand.setColour (juce::Label::textColourId, accent.withAlpha (0.9f));
+        brand.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold)));
+        // Blend the accent with white (rather than using the raw accent at
+        // partial alpha) so the brand text stays clearly legible even for
+        // darker/muted accent colours -- the old low-alpha accent text was
+        // hard to read against the dark header for several pedals.
+        brand.setColour (juce::Label::textColourId, juce::Colours::white.interpolatedWith (accent, 0.55f));
         brand.setJustificationType (juce::Justification::centredRight);
         addAndMakeVisible (brand);
 
@@ -150,6 +161,7 @@ public:
                 c.box->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
                 c.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
                     (apvts, id, *c.box);
+                c.paramID = id;
 
                 addAndMakeVisible (*c.label);
                 addAndMakeVisible (*c.box);
@@ -247,6 +259,13 @@ public:
             }
         }
 
+        // setSize() must come after every child control exists: it triggers
+        // resized() synchronously, and resized() lays out knobs/labels/boxes
+        // from the vectors above. Calling it earlier (as this used to) fired
+        // resized() while those vectors were still empty, so nothing had
+        // real bounds until the host forced a second resize -- which is why
+        // the UI looked blank/empty until you dragged to resize the window.
+        setSize (760, 470);
     }
 
     ~DevKomodoUniversalEditor() override
@@ -378,6 +397,23 @@ public:
         }
     }
 
+    // Lets an owning editor (e.g. AmpSim swapping "Amp Voice" between guitar
+    // and bass amp names) replace a combo box's visible item list in place,
+    // without touching the underlying parameter's index/range.
+    void relabelChoiceItems (const juce::String& paramIDToMatch, const juce::StringArray& newLabels)
+    {
+        for (auto& c : choices)
+        {
+            if (c.box == nullptr || c.paramID != paramIDToMatch)
+                continue;
+            const int currentId = c.box->getSelectedId();
+            c.box->clear (juce::dontSendNotification);
+            c.box->addItemList (newLabels, 1);
+            if (currentId > 0)
+                c.box->setSelectedId (currentId, juce::dontSendNotification);
+        }
+    }
+
 
 private:
     void timerCallback() override
@@ -409,6 +445,7 @@ private:
         std::unique_ptr<juce::ComboBox> box;
         std::unique_ptr<juce::Label> label;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
+        juce::String paramID;
     };
 
     struct Toggle

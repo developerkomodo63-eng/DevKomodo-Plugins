@@ -56,3 +56,11 @@ void ConvolutionReverbAudioProcessorEditor::resized()
     area.removeFromTop (4);
     editor->setBounds (area);
 }
+
+void ConvolutionReverbAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    // Same fix as AmpSim: the strip above the embedded editor (the IR load
+    // button/label) was never painted, so it showed the host's flat default
+    // grey instead of matching the rest of the plugin.
+    g.fillAll (juce::Colour::fromRGB (9, 10, 13).interpolatedWith (juce::Colour::fromRGB (45, 180, 196), 0.10f));
+}

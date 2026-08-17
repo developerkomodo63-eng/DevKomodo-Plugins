@@ -42,9 +42,40 @@ AmpSimAudioProcessorEditor::AmpSimAudioProcessorEditor (AmpSimAudioProcessor& p)
     };
 
     setSize (800, 570);
+
+    lastBassMode = audioProcessor.apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
+    updateVoiceLabels (lastBassMode);
+    startTimerHz (10);
 }
 
-AmpSimAudioProcessorEditor::~AmpSimAudioProcessorEditor() = default;
+AmpSimAudioProcessorEditor::~AmpSimAudioProcessorEditor()
+{
+    stopTimer();
+}
+
+void AmpSimAudioProcessorEditor::timerCallback()
+{
+    const bool bassMode = audioProcessor.apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
+    if (bassMode != lastBassMode)
+    {
+        lastBassMode = bassMode;
+        updateVoiceLabels (bassMode);
+    }
+}
+
+void AmpSimAudioProcessorEditor::updateVoiceLabels (bool bassMode)
+{
+    // The DSP already has 3 dedicated bass amp voices (Bass Clean / Bass SVT
+    // / Bass Modern) alongside the 5 guitar voices, but the "Amp Voice"
+    // dropdown always showed the guitar names even in Bass mode -- this is
+    // what looked like "missing bass amps". Swap the visible labels to match
+    // the selected instrument; the underlying VOICE parameter/index doesn't
+    // change, so presets and automation stay intact.
+    static const juce::StringArray guitarVoices { "Clean", "Crunch", "British Lead", "American Lead", "High Gain" };
+    static const juce::StringArray bassVoices    { "Bass Clean", "Bass SVT", "Bass Modern" };
+    if (editor != nullptr)
+        editor->relabelChoiceItems ("VOICE", bassMode ? bassVoices : guitarVoices);
+}
 
 void AmpSimAudioProcessorEditor::updateCabLabel()
 {
@@ -64,4 +95,12 @@ void AmpSimAudioProcessorEditor::resized()
     cabFileLabel.setBounds (top);
     area.removeFromTop (4);
     editor->setBounds (area);
+}
+
+void AmpSimAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    // Without this, the strip above the embedded editor (where the cab IR
+    // buttons live) never got painted, so it showed the host's flat default
+    // grey instead of matching the rest of the plugin.
+    g.fillAll (juce::Colour::fromRGB (9, 10, 13).interpolatedWith (juce::Colour::fromRGB (255, 138, 61), 0.10f));
 }

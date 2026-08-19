@@ -15,6 +15,37 @@ public:
 
     void setArcColour (juce::Colour c) { arcColour = c; }
 
+    // Combo boxes (Mode/Style/Voice selectors like Tube, Tape, Diode, etc.)
+    // used JUCE's default font here, which reads small and thin in these
+    // compact panels. Bumping both the closed-box text and the dropdown
+    // list itself makes the actual option names easy to read.
+    juce::Font getComboBoxFont (juce::ComboBox&) override
+    {
+        return juce::Font (juce::FontOptions (15.0f, juce::Font::bold));
+    }
+
+    juce::Font getPopupMenuFont() override
+    {
+        return juce::Font (juce::FontOptions (16.0f, juce::Font::plain));
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height, bool,
+                        int, int, int, int, juce::ComboBox& box) override
+    {
+        auto bounds = juce::Rectangle<int> (0, 0, width, height).toFloat().reduced (1.0f);
+        g.setColour (juce::Colour::fromRGB (18, 20, 25));
+        g.fillRoundedRectangle (bounds, 6.0f);
+        g.setColour (box.isPopupActive() ? arcColour : juce::Colour::fromRGB (70, 74, 84));
+        g.drawRoundedRectangle (bounds, 6.0f, 1.4f);
+
+        auto arrowZone = bounds.removeFromRight (22.0f);
+        juce::Path arrow;
+        const float cx = arrowZone.getCentreX(), cy = arrowZone.getCentreY();
+        arrow.addTriangle (cx - 5.0f, cy - 2.5f, cx + 5.0f, cy - 2.5f, cx, cy + 4.0f);
+        g.setColour (arcColour);
+        g.fillPath (arrow);
+    }
+
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider& slider) override
@@ -159,6 +190,7 @@ public:
                 c.box = std::make_unique<juce::ComboBox>();
                 c.box->addItemList (choice->choices, 1);
                 c.box->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                c.box->setLookAndFeel (&knobLookAndFeel);
                 c.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
                     (apvts, id, *c.box);
                 c.paramID = id;
@@ -273,6 +305,8 @@ public:
         stopTimer();
         for (auto& k : knobs)
             if (k.slider != nullptr) k.slider->setLookAndFeel (nullptr);
+        for (auto& c : choices)
+            if (c.box != nullptr) c.box->setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -505,10 +539,21 @@ private:
                       || key.contains ("WIDTH") || key.contains ("RESONANCE");
         const bool time = key.contains ("TIME") || key.contains ("DELAY") || key.contains ("RELEASE")
                        || key.contains ("SWELL") || key.contains ("DECAY");
+        // "FREQ" (not just the full word "FREQUENCY") so abbreviated IDs like
+        // MINFREQ/MAXFREQ/ROTATIONFREQ are covered too -- those were
+        // previously frozen at their default in every preset.
         const bool tone = key.contains ("TONE") || key.contains ("TREBLE") || key.contains ("HIGH")
-                       || key.contains ("PRESENCE") || key.contains ("FREQUENCY");
+                       || key.contains ("PRESENCE") || key.contains ("FREQ");
         const bool level = key.contains ("LEVEL") || key.contains ("OUTPUT") || key.contains ("MAKEUP");
-        const bool gate = key.contains ("GATE") || key.contains ("THRESHOLD");
+        // "THRESH" (not the full word "THRESHOLD") so abbreviated IDs like
+        // Clipper/Limiter's THRESH are covered too.
+        const bool gate = key.contains ("GATE") || key.contains ("THRESH");
+        // RATE/SPEED is the single most audible control on almost every
+        // modulation pedal (Chorus/Flanger/Phaser/Tremolo/Vibrato/Doubler/
+        // RotarySpeaker), and previously matched no bucket at all, so those
+        // pedals' presets differed only in mix/feedback/depth while the
+        // actual motion speed never changed.
+        const bool motion = key.contains ("RATE") || key.contains ("SPEED");
 
         switch (preset)
         {
@@ -519,23 +564,27 @@ private:
                 if (wet) value = juce::jmap (value, 0.0f, 1.0f, 0.15f, 0.45f);
                 if (tone) value = juce::jmap (value, 0.0f, 1.0f, 0.42f, 0.62f);
                 if (level) value = juce::jmap (value, 0.0f, 1.0f, 0.45f, 0.58f);
+                if (motion) value = juce::jmap (value, 0.0f, 1.0f, 0.20f, 0.38f);
                 break;
             case 2: // Punch.
                 if (drive) value = juce::jmax (value, 0.65f);
                 if (wet) value = juce::jlimit (0.0f, 1.0f, value * 1.15f);
                 if (time) value *= 0.75f;
                 if (gate) value = juce::jlimit (0.0f, 1.0f, value * 0.85f);
+                if (motion) value = juce::jmap (value, 0.0f, 1.0f, 0.40f, 0.55f);
                 break;
             case 3: // Wide / ambient.
                 if (wet) value = juce::jmax (value, 0.72f);
                 if (time) value = juce::jmax (value, 0.55f);
                 if (tone) value = juce::jmin (1.0f, value * 1.10f);
+                if (motion) value = juce::jmap (value, 0.0f, 1.0f, 0.25f, 0.42f);
                 break;
             default: // Extreme / modern.
                 if (drive) value = juce::jmax (value, 0.82f);
                 if (wet) value = juce::jmax (value, 0.80f);
                 if (tone) value = juce::jmin (1.0f, value * 1.18f);
                 if (level) value = juce::jlimit (0.0f, 1.0f, value * 0.90f);
+                if (motion) value = juce::jmap (value, 0.0f, 1.0f, 0.65f, 0.90f);
                 break;
         }
 
@@ -619,6 +668,111 @@ private:
                         for (auto& [id, normalised] : p.values) if (id == "VOICE") normalised = choice->convertTo0to1 (static_cast<float> (v[1]));
                 setPresetValue ("BASS", v[2]); setPresetValue ("MID", v[3]); setPresetValue ("TREBLE", v[4]);
                 setPresetValue ("PRESENCE", v[5]); setPresetValue ("LEVEL", v[6]);
+            }
+            else if (category == "BITCRUSHER" && presetIndex > 0)
+            {
+                // BITS/RATEDIV are the entire identity of this pedal and
+                // previously never moved between presets.
+                static constexpr float values[4][2] = {
+                    { 12.0f, 2.0f }, { 8.0f, 4.0f }, { 10.0f, 3.0f }, { 4.0f, 12.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("BITS", v[0]); setPresetValue ("RATEDIV", v[1]);
+            }
+            else if (category == "GRANULATOR" && presetIndex > 0)
+            {
+                static constexpr float values[4][4] = {
+                    { 150.0f, 8.0f, 0.0f, 0.10f },
+                    { 60.0f, 25.0f, 2.0f, 0.30f },
+                    { 200.0f, 15.0f, 5.0f, 0.50f },
+                    { 25.0f, 45.0f, 9.0f, 0.90f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("GRAINSIZE", v[0]); setPresetValue ("DENSITY", v[1]);
+                setPresetValue ("PITCHSPREAD", v[2]); setPresetValue ("POSITIONJITTER", v[3]);
+            }
+            else if (category == "TRANSIENT SHAPER" && presetIndex > 0)
+            {
+                static constexpr float values[4][3] = {
+                    { 2.0f, -1.0f, 1.5f }, { 8.0f, -3.0f, 2.5f },
+                    { 3.0f, 4.0f, 1.8f }, { 12.0f, -8.0f, 3.5f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("ATTACK", v[0]); setPresetValue ("SUSTAIN", v[1]); setPresetValue ("SENSITIVITY", v[2]);
+            }
+            else if (category == "VINYL EMULATION" && presetIndex > 0)
+            {
+                static constexpr float values[4][3] = {
+                    { 0.10f, 0.08f, 0.15f }, { 0.30f, 0.25f, 0.35f },
+                    { 0.45f, 0.20f, 0.40f }, { 0.75f, 0.70f, 0.85f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("WOW", v[0]); setPresetValue ("CRACKLE", v[1]); setPresetValue ("AGE", v[2]);
+            }
+            else if (category == "OCTAVER" && presetIndex > 0)
+            {
+                static constexpr float values[4][4] = {
+                    { 0.4f, 0.0f, 0.0f, 0.9f }, { 0.7f, 0.2f, 0.1f, 0.7f },
+                    { 0.5f, 0.3f, 0.4f, 0.6f }, { 0.8f, 0.7f, 0.6f, 0.4f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("SUB1", v[0]); setPresetValue ("SUB2", v[1]);
+                setPresetValue ("UP", v[2]); setPresetValue ("DRY", v[3]);
+            }
+            else if (category == "REVERB" && presetIndex > 0)
+            {
+                // SIZE/DAMPING/SHIMMER define room/plate/hall/arena far more
+                // than MIX/WIDTH alone did.
+                static constexpr float values[4][4] = {
+                    { 0.25f, 0.60f, 0.22f, 0.0f }, { 0.45f, 0.35f, 0.30f, 0.0f },
+                    { 0.75f, 0.40f, 0.35f, 0.10f }, { 0.95f, 0.25f, 0.45f, 0.30f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("SIZE", v[0]); setPresetValue ("DAMPING", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("SHIMMER", v[3]);
+            }
+            else if (category == "BROADCAST COMPRESSOR" && presetIndex > 0)
+            {
+                static constexpr float values[4] = { 3.0f, 6.0f, 4.5f, 9.0f };
+                setPresetValue ("COMPRESSION", values[(size_t) juce::jlimit (0, 3, presetIndex - 1)]);
+            }
+            else if (category == "EQ 6-BAND" && presetIndex > 0)
+            {
+                // The generic FREQ-bucket heuristic (added for abbreviated
+                // IDs like MINFREQ) was pulling all 6 band FREQ params
+                // toward the same normalised range, collapsing this pedal's
+                // deliberately spaced band centers together. Explicitly
+                // pinning every *_FREQ back to its default and only shaping
+                // gain per band avoids that.
+                static constexpr float gains[4][6] = {
+                    { -3.0f, -2.0f, 0.0f, 1.0f, 2.0f, 0.0f },   // Tight
+                    { -1.0f, 0.0f, 0.0f, 2.0f, 4.0f, 3.0f },    // Bright
+                    { 0.0f, 0.0f, 1.0f, 4.0f, 2.0f, 1.0f },     // Presence
+                    { 3.0f, 1.0f, -4.0f, -2.0f, 2.0f, 3.0f }    // Sculpt
+                };
+                static constexpr float levels[4] = { 0.5f, 0.0f, 0.0f, 1.0f };
+                static constexpr float freqDefaults[6] = { 80.0f, 250.0f, 800.0f, 2000.0f, 4000.0f, 8000.0f };
+                const int idx = juce::jlimit (0, 3, presetIndex - 1);
+                for (int b = 0; b < 6; ++b)
+                {
+                    setPresetValue ("BAND" + juce::String (b) + "_FREQ", freqDefaults[b]);
+                    setPresetValue ("BAND" + juce::String (b) + "_GAIN", gains[idx][b]);
+                }
+                setPresetValue ("LEVEL", levels[idx]);
+            }
+            else if (category == "CONSOLE EQ" && presetIndex > 0)
+            {
+                static constexpr float values[4][3] = {
+                    { -3.0f, 0.0f, 1.0f }, { -1.0f, 0.0f, 4.0f },
+                    { 0.0f, 2.0f, 2.0f }, { 2.0f, -3.0f, 3.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("LOW", v[0]); setPresetValue ("MID", v[1]); setPresetValue ("HIGH", v[2]);
+            }
+            else if (category == "GRAPHIC EQ" && presetIndex > 0)
+            {
+                // 10 ISO bands: 31/62/125/250/500/1k/2k/4k/8k/16k Hz.
+                static constexpr float values[4][10] = {
+                    { -3.0f, -3.0f, -2.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+                    { -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 3.0f, 4.0f, 3.0f },
+                    { 0.0f, 0.0f, 0.0f, -1.0f, -1.0f, 0.0f, 3.0f, 4.0f, 2.0f, 1.0f },
+                    { 2.0f, 1.0f, 0.0f, -2.0f, -3.0f, -2.0f, 0.0f, 2.0f, 3.0f, 3.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                for (int b = 0; b < 10; ++b)
+                    setPresetValue ("BAND" + juce::String (b), v[b]);
             }
 
             result.push_back (std::move (p));

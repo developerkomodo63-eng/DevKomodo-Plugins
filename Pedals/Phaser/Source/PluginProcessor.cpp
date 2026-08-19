@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/TempoSync.h"
 #include "DevKomodoUI.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout PhaserAudioProcessor::createParameterLayout()
@@ -25,6 +26,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhaserAudioProcessor::create
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 0.5f));
+
+        DevKomodoTempoSync::addParameters (params, 4);
 
     return { params.begin(), params.end() };
 }
@@ -98,7 +101,12 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     const bool bassMode = apvts.getRawParameterValue ("INSTRUMENT")->load() > 0.5f;
 
-    const float rateHz     = apvts.getRawParameterValue ("RATE")->load();
+    float rateHz     = apvts.getRawParameterValue ("RATE")->load();
+    {
+        const bool tempoSynced = apvts.getRawParameterValue ("TEMPOSYNC")->load() > 0.5f;
+        const int noteDivIndex = (int) apvts.getRawParameterValue ("NOTEDIV")->load();
+        rateHz = DevKomodoTempoSync::resolveHz (*this, rateHz, tempoSynced, noteDivIndex, 0.02f, 5.0f);
+    }
     const float depthBase  = apvts.getRawParameterValue ("DEPTH")->load();
     const float depth      = bassMode ? depthBase * 0.6f : depthBase;
     const int stagesChoice = (int) apvts.getRawParameterValue ("STAGES")->load();

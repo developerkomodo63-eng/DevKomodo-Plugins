@@ -10,7 +10,7 @@ template <typename Processor>
 class SynthPedalEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    struct Preset { const char* name; int waveform; int octave; float glide; float detune; float sub; float gate; float mix; float level; };
+    struct Preset { const char* name; int waveform; int octave; float glide; float detune; float sub; float gate; float mix; float level; float pulseWidth = 0.5f; };
 
     SynthPedalEditor (Processor& p, juce::String titleText, std::array<Preset, 6> presetValues, juce::Colour accentColour)
         : AudioProcessorEditor (&p), processor (p), presets (presetValues), accent (accentColour), knobLookAndFeel (accentColour)
@@ -23,7 +23,7 @@ public:
         waveformLabel.setJustificationType (juce::Justification::centred);
         waveformLabel.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
         waveformLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.78f));
-        addAndMakeVisible (waveformLabel); for (int i=0;i<(int)presets.size();++i) presetBox.addItem (presets[(size_t)i].name, i+2); presetBox.setSelectedId (1, juce::dontSendNotification);
+        addAndMakeVisible (waveformLabel); for (int i=0;i<(int)presets.size();++i) presetBox.addItem (presets[(size_t)i].name, i+2); presetBox.setSelectedId (1, juce::dontSendNotification); presetBox.setLookAndFeel (&knobLookAndFeel);
         presetBox.onChange=[this]{ const int id=presetBox.getSelectedId(); if(id>=2 && id-2<(int)presets.size()) loadPreset(presets[(size_t)id-2]); }; addAndMakeVisible(presetBox);
         configureChoice (waveform, waveformAttachment, "WAVEFORM", { "Sine", "Saw", "Square", "Triangle", "Pulse", "Soft Saw", "Super Saw", "Organ", "Custom" });
         configureSlider(octave,octaveAttachment,"OCTAVE"," oct"); configureSlider(glide,glideAttachment,"GLIDE"," ms"); configureSlider(detune,detuneAttachment,"DETUNE"," ct");
@@ -41,6 +41,8 @@ public:
         stopTimer();
         for (auto* slider : { &octave, &glide, &detune, &tuning, &pitchCorrection, &pulseWidth, &h2, &h3, &h4, &h5, &sub, &gate, &mix, &level })
             slider->setLookAndFeel (nullptr);
+        waveform.setLookAndFeel (nullptr);
+        presetBox.setLookAndFeel (nullptr);
     }
 
     void paint(juce::Graphics& g) override
@@ -122,9 +124,9 @@ private:
         addAndMakeVisible(slider);
         attachment=std::make_unique<Attachment>(processor.apvts,id,slider);
     }
-    void configureChoice(juce::ComboBox& box,std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attachment,const char* id,juce::StringArray choices){ box.setName(id); box.addItemList(choices,1); box.setTooltip(id); addAndMakeVisible(box); attachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.apvts,id,box); }
+    void configureChoice(juce::ComboBox& box,std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attachment,const char* id,juce::StringArray choices){ box.setName(id); box.addItemList(choices,1); box.setTooltip(id); box.setLookAndFeel(&knobLookAndFeel); addAndMakeVisible(box); attachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.apvts,id,box); }
     void setParameter(const char* id,float value){ if(auto* p=processor.apvts.getParameter(id)) p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(value)); }
-    void loadPreset(const Preset& p){ setParameter("WAVEFORM", (float) p.waveform); setParameter("OCTAVE",(float)p.octave); setParameter("GLIDE",p.glide); setParameter("DETUNE",p.detune); setParameter("SUBLEVEL",p.sub); setParameter("GATE",p.gate); setParameter("MIX",p.mix); setParameter("LEVEL",p.level); }
+    void loadPreset(const Preset& p){ setParameter("WAVEFORM", (float) p.waveform); setParameter("OCTAVE",(float)p.octave); setParameter("GLIDE",p.glide); setParameter("DETUNE",p.detune); setParameter("SUBLEVEL",p.sub); setParameter("GATE",p.gate); setParameter("MIX",p.mix); setParameter("LEVEL",p.level); setParameter("PULSEWIDTH",p.pulseWidth); }
     void timerCallback() override{ const float f=processor.getDetectedFrequency(); if(f>0.0f&&std::isfinite(f)){ detectedFrequency=juce::String(f,1)+" Hz"; const float midi=69.0f+12.0f*std::log2(f/440.0f); const int n=juce::jlimit(0,127,(int)std::lround(midi)); static constexpr const char* names[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}; detectedNote=juce::String(names[n%12])+juce::String(n/12-1); } else {detectedFrequency="-- Hz"; detectedNote.clear();} repaint(); }
     DevKomodoKnobLookAndFeel knobLookAndFeel;
     Processor& processor; std::array<Preset,6> presets; juce::Colour accent;

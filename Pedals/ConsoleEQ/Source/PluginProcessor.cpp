@@ -76,6 +76,7 @@ bool ConsoleEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 
 void ConsoleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
+    juce::ScopedNoDenormals noDenormals;
     const int numChannels = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const int numSamples = buffer.getNumSamples();
 

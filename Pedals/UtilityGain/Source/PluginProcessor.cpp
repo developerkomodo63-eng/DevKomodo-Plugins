@@ -52,6 +52,7 @@ bool UtilityGainAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 
 void UtilityGainAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
+    juce::ScopedNoDenormals noDenormals;
     const bool bypass = apvts.getRawParameterValue ("BYPASS")->load() > 0.5f;
     if (bypass) return;
 

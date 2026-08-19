@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/TempoSync.h"
 #include "DevKomodoUI.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout VibratoAudioProcessor::createParameterLayout()
@@ -14,6 +15,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout VibratoAudioProcessor::creat
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 1.0f));
+
+        DevKomodoTempoSync::addParameters (params, 4);
 
     return { params.begin(), params.end() };
 }
@@ -83,7 +86,12 @@ void VibratoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
-    const float rateHz  = apvts.getRawParameterValue ("RATE")->load();
+    float rateHz  = apvts.getRawParameterValue ("RATE")->load();
+    {
+        const bool tempoSynced = apvts.getRawParameterValue ("TEMPOSYNC")->load() > 0.5f;
+        const int noteDivIndex = (int) apvts.getRawParameterValue ("NOTEDIV")->load();
+        rateHz = DevKomodoTempoSync::resolveHz (*this, rateHz, tempoSynced, noteDivIndex, 0.5f, 10.0f);
+    }
     const float depth   = apvts.getRawParameterValue ("DEPTH")->load();
     const float mix     = apvts.getRawParameterValue ("MIX")->load();
 

@@ -15,7 +15,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpSimAudioProcessor::create
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { "VOICE", 1 }, "Amp Voice",
-        juce::StringArray { "Clean", "Crunch", "British Lead", "American Lead", "High Gain" }, 1));
+        juce::StringArray { "Clean", "Crunch", "British Lead", "American Lead", "High Gain",
+                             "Vintage Tweed", "Modern Metal" }, 1));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "BASS", 1 }, "Bass", 0.0f, 10.0f, 5.0f));
@@ -185,20 +186,27 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     // cada voz cambia el bias y la "dureza" de las dos etapas en cascada,
     // y cuanto empuja el pre-gain interno antes de llegar a ellas -- eso
-    // alcanza para que las 5 voces suenen bien distintas sin 5 motores
+    // alcanza para que las voces suenen bien distintas sin un motor
+    // separado por voz. 7 voces de guitarra + 5 de bajo (antes eran 5+3;
+    // el modo bajo solo exponia 3 de 5 espacios del combo, dejando 2
+    // posiciones "huerfanas" que repetian la ultima voz).
     struct VoiceParams { float bias, hardness, preGain; };
-    constexpr VoiceParams voices[8] = {
-        { 0.04f, 0.6f, 0.7f },  // Clean
-        { 0.12f, 1.2f, 1.3f },  // Crunch
-        { 0.20f, 1.8f, 1.8f },  // British Lead
-        { 0.10f, 2.2f, 2.0f },  // American Lead
-        { 0.26f, 3.0f, 2.6f },  // High Gain
-        { 0.025f, 0.55f, 0.55f }, // Bass Clean
-        { 0.045f, 0.95f, 0.90f }, // Bass SVT
-        { 0.075f, 1.35f, 1.15f }  // Bass Modern
+    constexpr VoiceParams voices[12] = {
+        { 0.04f, 0.6f, 0.7f },   // Clean
+        { 0.12f, 1.2f, 1.3f },   // Crunch
+        { 0.20f, 1.8f, 1.8f },   // British Lead
+        { 0.10f, 2.2f, 2.0f },   // American Lead
+        { 0.26f, 3.0f, 2.6f },   // High Gain
+        { 0.08f, 0.85f, 1.0f },  // Vintage Tweed
+        { 0.30f, 3.6f, 3.1f },   // Modern Metal
+        { 0.025f, 0.55f, 0.55f },// Bass Clean
+        { 0.035f, 0.75f, 0.72f },// Bass Vintage
+        { 0.045f, 0.95f, 0.90f },// Bass SVT
+        { 0.075f, 1.35f, 1.15f },// Bass Modern
+        { 0.10f, 1.75f, 1.45f }  // Bass Hi-Gain
     };
-    const int mappedVoice = bassMode ? juce::jlimit (5, 7, voiceChoice + 5)
-                                      : juce::jlimit (0, 4, voiceChoice);
+    const int mappedVoice = bassMode ? juce::jlimit (7, 11, voiceChoice + 7)
+                                      : juce::jlimit (0, 6, voiceChoice);
     const auto& voice = voices[(size_t) mappedVoice];
 
     struct CabParams { float lowCut, highCut, presenceFreq; };
@@ -217,12 +225,22 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const auto& cab = cabs[(size_t) juce::jlimit (0, 5, effectiveCabChoice)];
     hpFilter.setCutoffFrequency (bassMode ? 22.0f : 55.0f);
 
+    // El tone stack usaba las mismas frecuencias centrales para guitarra y
+    // bajo. Un bajo de 4/5 cuerdas tiene fundamentales bastante mas graves
+    // (hasta ~31Hz en un B bajo) y su contenido de "brillo" util vive mas
+    // abajo que el de una guitarra, asi que el shelf de graves, la banda
+    // de medios y el shelf de agudos ahora se centran distinto segun el
+    // instrumento en vez de compartir un unico ajuste pensado para guitarra.
+    const float bassShelfFreq  = bassMode ? 85.0f  : 120.0f;
+    const float midFreq        = bassMode ? 500.0f : 700.0f;
+    const float trebleShelfFreq= bassMode ? 1800.0f: 3000.0f;
+
     auto bassCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (
-        currentSampleRate, 120.0f, 0.7f, juce::Decibels::decibelsToGain (bassDb));
+        currentSampleRate, bassShelfFreq, 0.7f, juce::Decibels::decibelsToGain (bassDb));
     auto midCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (
-        currentSampleRate, 700.0f, 0.8f, juce::Decibels::decibelsToGain (midDb));
+        currentSampleRate, midFreq, 0.8f, juce::Decibels::decibelsToGain (midDb));
     auto trebleCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (
-        currentSampleRate, 3000.0f, 0.7f, juce::Decibels::decibelsToGain (trebleDb));
+        currentSampleRate, trebleShelfFreq, 0.7f, juce::Decibels::decibelsToGain (trebleDb));
     auto cabLowCutCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeHighPass (
         currentSampleRate, cab.lowCut);
     auto cabHighCutCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass (

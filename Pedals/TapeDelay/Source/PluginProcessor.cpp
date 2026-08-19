@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/TempoSync.h"
 #include "DevKomodoUI.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout TapeDelayAudioProcessor::createParameterLayout()
@@ -24,6 +25,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TapeDelayAudioProcessor::cre
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 0.35f));
+
+        DevKomodoTempoSync::addParameters (params, 4);
 
     return { params.begin(), params.end() };
 }
@@ -101,7 +104,12 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
-    const float timeMs     = apvts.getRawParameterValue ("TIME")->load();
+    float timeMs     = apvts.getRawParameterValue ("TIME")->load();
+    {
+        const bool tempoSynced = apvts.getRawParameterValue ("TEMPOSYNC")->load() > 0.5f;
+        const int noteDivIndex = (int) apvts.getRawParameterValue ("NOTEDIV")->load();
+        timeMs = DevKomodoTempoSync::resolveMilliseconds (*this, timeMs, tempoSynced, noteDivIndex, 30.0f, 1500.0f);
+    }
     const float feedback   = apvts.getRawParameterValue ("FEEDBACK")->load();
     const float wowFlutter = apvts.getRawParameterValue ("WOWFLUTTER")->load();
     const float saturation = apvts.getRawParameterValue ("SATURATION")->load();

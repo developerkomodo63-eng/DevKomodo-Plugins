@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/TempoSync.h"
 #include "DevKomodoUI.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout DelayAudioProcessor::createParameterLayout()
@@ -23,6 +24,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout DelayAudioProcessor::createP
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "DUCKSENSITIVITY", 1 }, "Duck Sensitivity", 0.2f, 3.0f, 1.0f));
+
+        DevKomodoTempoSync::addParameters (params, 4);
 
     return { params.begin(), params.end() };
 }
@@ -99,7 +102,12 @@ void DelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
-    const float timeMs   = apvts.getRawParameterValue ("TIME")->load();
+    float timeMs   = apvts.getRawParameterValue ("TIME")->load();
+    {
+        const bool tempoSynced = apvts.getRawParameterValue ("TEMPOSYNC")->load() > 0.5f;
+        const int noteDivIndex = (int) apvts.getRawParameterValue ("NOTEDIV")->load();
+        timeMs = DevKomodoTempoSync::resolveMilliseconds (*this, timeMs, tempoSynced, noteDivIndex, 1.0f, 2000.0f);
+    }
     const float feedback = apvts.getRawParameterValue ("FEEDBACK")->load();
     const float toneHz   = apvts.getRawParameterValue ("TONE")->load();
     const float mix      = apvts.getRawParameterValue ("MIX")->load();

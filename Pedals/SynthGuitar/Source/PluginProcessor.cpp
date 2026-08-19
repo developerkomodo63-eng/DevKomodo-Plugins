@@ -269,12 +269,16 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 juce::AudioProcessorEditor* SynthGuitarAudioProcessor::createEditor()
 {
     static constexpr std::array<SynthPedalEditor<SynthGuitarAudioProcessor>::Preset, 6> presets = {{
-        { "Clean Strings", 2, 0, 8.0f, 3.0f, 0.20f, -42.0f, 0.52f, -1.0f },
-        { "Synth Lead", 0, 0, 18.0f, 10.0f, 0.10f, -38.0f, 0.78f, -2.0f },
-        { "Retro Octave", 1, -1, 25.0f, 8.0f, 0.55f, -39.0f, 0.78f, -2.0f },
-        { "Wide Guitar", 0, 0, 42.0f, 24.0f, 0.28f, -36.0f, 0.70f, -3.0f },
-        { "Dark Machine", 1, -1, 32.0f, 15.0f, 0.70f, -35.0f, 0.82f, -3.0f },
-        { "Bright Pulse", 0, 1, 12.0f, 6.0f, 0.18f, -40.0f, 0.72f, -2.0f }
+        { "Clean Strings", 2, 0, 8.0f, 3.0f, 0.20f, -42.0f, 0.52f, -1.0f, 0.50f },
+        { "Synth Lead", 0, 0, 18.0f, 10.0f, 0.10f, -38.0f, 0.78f, -2.0f, 0.50f },
+        { "Retro Octave", 1, -1, 25.0f, 8.0f, 0.55f, -39.0f, 0.78f, -2.0f, 0.50f },
+        { "Wide Guitar", 0, 0, 42.0f, 24.0f, 0.28f, -36.0f, 0.70f, -3.0f, 0.50f },
+        { "Dark Machine", 1, -1, 32.0f, 15.0f, 0.70f, -35.0f, 0.82f, -3.0f, 0.50f },
+        // Was previously waveform 0 (Sine) despite the name -- "Bright
+        // Pulse" now actually uses the Pulse waveform (index 4), with a
+        // narrow pulse width for the brighter, thinner harmonic content
+        // that name implies.
+        { "Bright Pulse", 4, 1, 12.0f, 6.0f, 0.18f, -40.0f, 0.72f, -2.0f, 0.28f }
     }};
     return new SynthPedalEditor<SynthGuitarAudioProcessor> (*this, "SYNTH GUITAR", presets, juce::Colour::fromRGB (112, 184, 255));
 }

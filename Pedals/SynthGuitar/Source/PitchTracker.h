@@ -228,13 +228,20 @@ private:
         }
 
         // Conversely, reject an accidental subharmonic when the half-period
-        // has substantially stronger evidence.
+        // has substantially stronger evidence. This ratio used to be 1.28
+        // (only 28% stronger), but a real guitar/bass note's 2nd harmonic
+        // is very often that much stronger than its own fundamental --
+        // especially with pickups/EQ that emphasize upper harmonics -- so
+        // this was flipping legitimately low, sustained notes up an octave
+        // mid-note, not just during noisy transients. Requiring much
+        // stronger evidence (85% louder, not 28%) means this only fires for
+        // genuine octave errors, not normal harmonic content.
         if (bestTau > tauMin * 2)
         {
             const int upperTau = bestTau / 2;
             const float currentCorr = correlationAt (bestTau);
             const float upperCorr = correlationAt (upperTau);
-            if (upperCorr > currentCorr * 1.28f)
+            if (upperCorr > currentCorr * 1.85f)
                 bestTau = upperTau;
         }
 

@@ -71,8 +71,9 @@ void AmpSimAudioProcessorEditor::updateVoiceLabels (bool bassMode)
     // what looked like "missing bass amps". Swap the visible labels to match
     // the selected instrument; the underlying VOICE parameter/index doesn't
     // change, so presets and automation stay intact.
-    static const juce::StringArray guitarVoices { "Clean", "Crunch", "British Lead", "American Lead", "High Gain" };
-    static const juce::StringArray bassVoices    { "Bass Clean", "Bass SVT", "Bass Modern" };
+    static const juce::StringArray guitarVoices { "Clean", "Crunch", "British Lead", "American Lead", "High Gain",
+                                                    "Vintage Tweed", "Modern Metal" };
+    static const juce::StringArray bassVoices    { "Bass Clean", "Bass Vintage", "Bass SVT", "Bass Modern", "Bass Hi-Gain" };
     if (editor != nullptr)
         editor->relabelChoiceItems ("VOICE", bassMode ? bassVoices : guitarVoices);
 }

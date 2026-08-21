@@ -75,6 +75,13 @@ float SaturatorAudioProcessor::saturate (float x, float mode, float character) n
 void SaturatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ignoreUnused(midi); juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
     const int in = getTotalNumInputChannels(), out = getTotalNumOutputChannels(), n = buffer.getNumSamples();
     for (int c=in;c<out;++c) buffer.clear(c,0,n);
     const float drive = apvts.getRawParameterValue("DRIVE")->load();

@@ -7,7 +7,7 @@ juce_add_plugin(VocalShifter
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 VSh1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "DevKomodo Vocal Shifter")
 
 target_sources(VocalShifter PRIVATE Source/PluginProcessor.cpp)

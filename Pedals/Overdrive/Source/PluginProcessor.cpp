@@ -21,6 +21,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout OverdriveAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "LEVEL", 1 }, "Level", -24.0f, 6.0f, 0.0f));
 
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { "HQ", 1 }, "HQ", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -58,6 +61,15 @@ void OverdriveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
 
     dcBlockerX1.assign((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
+    smoothedDriveBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    smoothedOutputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    oversampling.initProcessing ((size_t) samplesPerBlock);
+    oversampling.reset();
+
+    driveSmoothed.reset (sampleRate, 0.02);
+    driveSmoothed.setCurrentAndTargetValue (1.0f);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
 }
 
 void OverdriveAudioProcessor::releaseResources()
@@ -102,6 +114,14 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
 
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
+
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
 
@@ -117,11 +137,20 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float character = apvts.getRawParameterValue("CHARACTER")->load();
     const float levelDb = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain(levelDb);
+    const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
+
+    driveSmoothed.setTargetValue (drive);
+    outputGainSmoothed.setTargetValue (outputGain);
 
     lpFilter.setCutoffFrequency(toneCutoff);
 
     const int numSamples = buffer.getNumSamples();
-
+    jassert (numSamples <= (int) smoothedDriveBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        smoothedDriveBuffer[(size_t) sample] = driveSmoothed.getNextValue();
+        smoothedOutputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -130,13 +159,26 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
+    juce::dsp::AudioBlock<float> audioBlock (buffer);
+    auto processingBlock = audioBlock;
+    if (hq)
+        processingBlock = oversampling.processSamplesUp (processingBlock);
+    const int processingSamples = (int) processingBlock.getNumSamples();
+    const int oversamplingFactor = hq ? 4 : 1;
+
     // Native-rate nonlinear stage keeps CPU and latency extremely low.
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < numSamples; ++sample)
-            data[sample] = processSaturationSample (data[sample] * drive, character);
+        float* data = processingBlock.getChannelPointer ((size_t) channel);
+        for (int sample = 0; sample < processingSamples; ++sample)
+        {
+            const int sourceSample = juce::jmin (numSamples - 1, sample / oversamplingFactor);
+            data[sample] = processSaturationSample (data[sample] * smoothedDriveBuffer[(size_t) sourceSample], character);
+        }
     }
+
+    if (hq)
+        oversampling.processSamplesDown (audioBlock);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -154,7 +196,7 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             x1 = x0;
             y1 = y0;
 
-            channelData[sample] = y0 * outputGain;
+            channelData[sample] = y0 * smoothedOutputGainBuffer[(size_t) sample];
         }
     }
 }

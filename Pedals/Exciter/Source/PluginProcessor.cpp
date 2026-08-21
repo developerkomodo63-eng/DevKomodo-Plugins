@@ -48,6 +48,12 @@ void ExciterAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
 
     hpFilter.prepare (spec);
     hpFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
+    amountSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    amountBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void ExciterAudioProcessor::releaseResources()
@@ -77,6 +83,13 @@ void ExciterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -90,10 +103,18 @@ void ExciterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const float mix      = apvts.getRawParameterValue ("MIX")->load();
     const float levelDb  = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    amountSmoothed.setTargetValue (amount);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) amountBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        amountBuffer[(size_t) sample] = amountSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     hpFilter.setCutoffFrequency (freq);
-
-    const float driveStage = 1.0f + amount * 8.0f;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -103,13 +124,17 @@ void ExciterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         {
             const float dry = channelData[sample];
             const float high = hpFilter.processSample (channel, dry);
+            const float smoothedAmount = amountBuffer[(size_t) sample];
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            const float driveStage = 1.0f + smoothedAmount * 8.0f;
 
             // saturacion impar (genera armonicos altos, "brillo") escalada
             // por Amount; se normaliza para que subir el drive no baje el
             // volumen percibido de la excitacion
             const float excited = std::tanh (high * driveStage) / juce::jmax (driveStage, 1.0f);
 
-            channelData[sample] = (dry + excited * amount * mix) * outputGain;
+            channelData[sample] = (dry + excited * smoothedAmount * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

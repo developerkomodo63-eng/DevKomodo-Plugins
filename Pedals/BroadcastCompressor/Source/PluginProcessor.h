@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class BroadcastCompressorAudioProcessor : public juce::AudioProcessor
 {
@@ -45,6 +46,8 @@ private:
     // ajustar cada parametro a mano como el Compressor normal.
     float envelopeDb = -100.0f;
     float attackCoeff = 0.0f, releaseCoeff = 0.0f;
+    juce::SmoothedValue<float> compressionSmoothed, outputGainSmoothed;
+    std::vector<float> compressionBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BroadcastCompressorAudioProcessor)
 };

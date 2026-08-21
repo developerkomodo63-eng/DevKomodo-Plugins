@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class VibratoAudioProcessor : public juce::AudioProcessor
 {
@@ -48,6 +49,8 @@ private:
 
     double sampleRate = 44100.0;
     float lfoPhase = 0.0f;
+    juce::SmoothedValue<float> rateSmoothed, depthSmoothed, mixSmoothed;
+    std::vector<float> rateBuffer, depthBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VibratoAudioProcessor)
 };

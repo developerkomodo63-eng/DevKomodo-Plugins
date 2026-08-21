@@ -27,6 +27,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout FuzzGuitarAudioProcessor::cr
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "LEVEL", 1 }, "Level", -24.0f, 6.0f, -6.0f));
 
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { "HQ", 1 }, "HQ", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -66,6 +69,17 @@ void FuzzGuitarAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
 
     dryBuffer.setSize ((int) spec.numChannels, samplesPerBlock);
+    driveSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    driveBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    driveSmoothed.setCurrentAndTargetValue (1.0f);
+    mixSmoothed.setCurrentAndTargetValue (1.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
+    oversampling.initProcessing ((size_t) samplesPerBlock);
+    oversampling.reset();
 }
 
 void FuzzGuitarAudioProcessor::releaseResources()
@@ -121,6 +135,13 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -141,10 +162,22 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const float mix         = apvts.getRawParameterValue("MIX")->load();
     const float levelDb     = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain  = juce::Decibels::decibelsToGain(levelDb);
+    const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
+
+    driveSmoothed.setTargetValue (drive);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
 
     lpFilter.setCutoffFrequency(toneCutoff);
 
     const int numSamples = buffer.getNumSamples();
+    jassert (numSamples <= (int) driveBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        driveBuffer[(size_t) sample] = driveSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     hpFilter.setCutoffFrequency (bassMode ? 25.0f : 100.0f);
 
@@ -158,14 +191,24 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    // Fuzz stays at native sample rate; its character comes from folding,
-    // bias and the post-tone filter rather than a heavy processing stage.
+    juce::dsp::AudioBlock<float> audioBlock (buffer);
+    auto processingBlock = audioBlock;
+    if (hq)
+        processingBlock = oversampling.processSamplesUp (processingBlock);
+    const int processingSamples = (int) processingBlock.getNumSamples();
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < numSamples; ++sample)
-            data[sample] = processFuzzSample (data[sample] * drive, fuzzAmount, bias);
+        float* data = processingBlock.getChannelPointer ((size_t) channel);
+        for (int sample = 0; sample < processingSamples; ++sample)
+        {
+            const int sourceSample = juce::jmin (numSamples - 1, sample / (hq ? 4 : 1));
+            data[sample] = processFuzzSample (data[sample] * driveBuffer[(size_t) sourceSample], fuzzAmount, bias);
+        }
     }
+
+    if (hq)
+        oversampling.processSamplesDown (audioBlock);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -183,7 +226,9 @@ void FuzzGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             x1 = x0;
             y1 = y0;
 
-            channelData[sample] = (dry[sample] * (1.0f - mix) + y0 * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry[sample] * (1.0f - smoothedMix) + y0 * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class ClipperAudioProcessor  : public juce::AudioProcessor
 {
@@ -38,5 +39,7 @@ public:
 
 private:
     double fs = 44100.0;
+    juce::SmoothedValue<float> thresholdSmoothed, mixSmoothed, makeupSmoothed;
+    std::vector<float> thresholdBuffer, mixBuffer, makeupBuffer;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ClipperAudioProcessor)
 };

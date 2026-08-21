@@ -57,6 +57,16 @@ void DoublerAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBl
 
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    delaySmoothed.reset (sampleRate, 0.02);
+    rateSmoothed.reset (sampleRate, 0.02);
+    depthSmoothed.reset (sampleRate, 0.02);
+    widthSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    delayBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    rateBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    depthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    widthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void DoublerAudioProcessor::releaseResources()
@@ -86,6 +96,13 @@ void DoublerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -104,12 +121,29 @@ void DoublerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const float depth       = apvts.getRawParameterValue ("DEPTH")->load();
     const float width       = apvts.getRawParameterValue ("WIDTH")->load();
     const float mix         = apvts.getRawParameterValue ("MIX")->load();
+    delaySmoothed.setTargetValue (delayMsBase);
+    rateSmoothed.setTargetValue (rateHz);
+    depthSmoothed.setTargetValue (depth);
+    widthSmoothed.setTargetValue (width);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) delayBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        delayBuffer[(size_t) sample] = delaySmoothed.getNextValue();
+        rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();
+        depthBuffer[(size_t) sample] = depthSmoothed.getNextValue();
+        widthBuffer[(size_t) sample] = widthSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
-    const float phaseInc = rateHz / (float) sampleRate;
     constexpr float maxModMs = 2.0f; // modulacion sutil, no queremos que suene a chorus
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = rateBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedDepth = depthBuffer[(size_t) sample];
+        const float smoothedWidth = widthBuffer[(size_t) sample];
+        const float smoothedMix = mixBuffer[(size_t) sample];
         lfoPhase += phaseInc;
         if (lfoPhase >= 1.0f)
             lfoPhase -= 1.0f;
@@ -120,14 +154,14 @@ void DoublerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             // LFO desfasado 90 grados: eso es lo que da el ancho estereo,
             // como una doble toma real donde las dos interpretaciones no
             // son identicas
-            const float channelDelayOffset = (channel == 1) ? width * 6.0f : 0.0f;
+            const float channelDelayOffset = (channel == 1) ? smoothedWidth * 6.0f : 0.0f;
             const float channelPhaseOffset = (channel == 1) ? 0.25f : 0.0f;
 
             float phase = lfoPhase + channelPhaseOffset;
             phase -= std::floor (phase);
 
-            const float modMs = depth * maxModMs * std::sin (juce::MathConstants<float>::twoPi * phase);
-            const float delayMs = juce::jmax (1.0f, delayMsBase + channelDelayOffset + modMs);
+            const float modMs = smoothedDepth * maxModMs * std::sin (juce::MathConstants<float>::twoPi * phase);
+            const float delayMs = juce::jmax (1.0f, delayBuffer[(size_t) sample] + channelDelayOffset + modMs);
             const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
             float* channelData = buffer.getWritePointer (channel);
@@ -149,7 +183,7 @@ void DoublerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             line[(size_t) wp] = input;
             wp = (wp + 1) % lineLength;
 
-            channelData[sample] = input * (1.0f - mix) + wet * mix;
+            channelData[sample] = input * (1.0f - smoothedMix) + wet * smoothedMix;
         }
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class DelayAudioProcessor : public juce::AudioProcessor
 {
@@ -59,6 +60,8 @@ private:
     // sidechain externo: se auto-detecta contra su propia entrada.
     float duckEnvelope = 0.0f;
     float duckAttackCoeff = 0.0f, duckReleaseCoeff = 0.0f;
+    juce::SmoothedValue<float> delaySamplesSmoothed, feedbackSmoothed, mixSmoothed;
+    std::vector<float> delaySamplesBuffer, feedbackBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DelayAudioProcessor)
 };

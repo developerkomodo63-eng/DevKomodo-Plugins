@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class AmpSimAudioProcessor : public juce::AudioProcessor
 {
@@ -76,6 +77,11 @@ private:
     juce::String lastLoadedCabFullPath;
 
     double currentSampleRate = 44100.0;
+    juce::SmoothedValue<float> gainSmoothed;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> gainBuffer, outputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
 
     static float preampStage (float x, float bias) noexcept;
     static float powerAmpStage (float x, float hardness) noexcept;

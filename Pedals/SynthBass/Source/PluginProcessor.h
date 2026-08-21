@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <atomic>
 #include "PitchTracker.h"
 #include "Oscillator.h"
@@ -76,6 +77,9 @@ private:
     std::atomic<float> detectedFrequency { 0.0f };
 
     std::atomic<float> detectedRms { 0.0f };
+
+    juce::SmoothedValue<float> subLevelSmoothed, mixSmoothed, outputGainSmoothed;
+    std::vector<float> subLevelBuffer, mixBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthBassAudioProcessor)
 };

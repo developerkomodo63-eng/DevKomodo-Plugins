@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class DistortionGuitarAudioProcessor : public juce::AudioProcessor
 {
@@ -51,6 +52,12 @@ private:
     juce::AudioBuffer<float> dryBuffer;
 
     double currentSampleRate = 44100.0;
+    juce::SmoothedValue<float> driveSmoothed;
+    juce::SmoothedValue<float> mixSmoothed;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> driveBuffer, mixBuffer, outputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
 
     static float processDistortionSample (float x, float bias) noexcept;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class VinylEmulationAudioProcessor : public juce::AudioProcessor
 {
@@ -54,6 +55,8 @@ private:
 
     double sampleRate = 44100.0;
     float wowPhase = 0.0f;
+    juce::SmoothedValue<float> wowSmoothed, crackleSmoothed, mixSmoothed, outputGainSmoothed;
+    std::vector<float> wowBuffer, crackleBuffer, mixBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VinylEmulationAudioProcessor)
 };

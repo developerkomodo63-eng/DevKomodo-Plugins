@@ -58,6 +58,12 @@ void TapeEmulationAudioProcessor::prepareToPlay (double sampleRateIn, int sample
     const int lineLength = (int) (maxLineMs / 1000.0 * sampleRate) + 4;
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    wowSmoothed.reset (sampleRate, 0.02); flutterSmoothed.reset (sampleRate, 0.02);
+    saturationSmoothed.reset (sampleRate, 0.02); hissSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02); outputGainSmoothed.reset (sampleRate, 0.02);
+    wowBuffer.assign ((size_t) samplesPerBlock, 0.0f); flutterBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    saturationBuffer.assign ((size_t) samplesPerBlock, 0.0f); hissBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f); outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     hfRolloffL.reset();
     hfRolloffR.reset();
@@ -105,6 +111,13 @@ void TapeEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -121,6 +134,19 @@ void TapeEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float mix         = apvts.getRawParameterValue ("MIX")->load();
     const float levelDb     = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain  = juce::Decibels::decibelsToGain (levelDb);
+    wowSmoothed.setTargetValue (wowAmt); flutterSmoothed.setTargetValue (flutterAmt);
+    saturationSmoothed.setTargetValue (saturation); hissSmoothed.setTargetValue (hiss);
+    mixSmoothed.setTargetValue (mix); outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) wowBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        wowBuffer[(size_t) sample] = wowSmoothed.getNextValue();
+        flutterBuffer[(size_t) sample] = flutterSmoothed.getNextValue();
+        saturationBuffer[(size_t) sample] = saturationSmoothed.getNextValue();
+        hissBuffer[(size_t) sample] = hissSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     auto toneCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass (sampleRate, toneHz);
     *hfRolloffL.coefficients = toneCoeffs;
@@ -146,8 +172,8 @@ void TapeEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         flutterPhase += flutterInc;
         if (flutterPhase >= 1.0f) flutterPhase -= 1.0f;
 
-        const float wowMod = wowAmt * wowMaxMs * std::sin (juce::MathConstants<float>::twoPi * wowPhase);
-        const float flutterMod = flutterAmt * flutterMaxMs * std::sin (juce::MathConstants<float>::twoPi * flutterPhase);
+        const float wowMod = wowBuffer[(size_t) sample] * wowMaxMs * std::sin (juce::MathConstants<float>::twoPi * wowPhase);
+        const float flutterMod = flutterBuffer[(size_t) sample] * flutterMaxMs * std::sin (juce::MathConstants<float>::twoPi * flutterPhase);
         const float delayMs = juce::jmax (0.5f, baseLineMs + wowMod + flutterMod);
         const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
@@ -172,14 +198,16 @@ void TapeEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             line[(size_t) wp] = dry;
             wp = (wp + 1) % lineLength;
 
-            float wet = tapeSaturate (wobbled, saturation);
+            float wet = tapeSaturate (wobbled, saturationBuffer[(size_t) sample]);
             wet = (channel == 0) ? hfRolloffL.processSample (wet) : hfRolloffR.processSample (wet);
 
             const float n1 = (channel == 0) ? noiseGenL.nextFloat() : noiseGenR.nextFloat();
             const float n2 = (channel == 0) ? noiseGenL.nextFloat() : noiseGenR.nextFloat();
-            wet += ((n1 + n2) - 1.0f) * noiseLevel * hiss;
+            wet += ((n1 + n2) - 1.0f) * noiseLevel * hissBuffer[(size_t) sample];
 
-            channelData[sample] = (dry * (1.0f - mix) + wet * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry * (1.0f - smoothedMix) + wet * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

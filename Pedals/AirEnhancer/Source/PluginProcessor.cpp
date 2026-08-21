@@ -49,6 +49,12 @@ void AirEnhancerAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     highBandFilter.prepare (spec);
     highBandFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
     highBandFilter.setCutoffFrequency (10000.0f);
+    lowSmoothed.reset (sampleRate, 0.02);
+    highSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    lowBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    highBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void AirEnhancerAudioProcessor::releaseResources()
@@ -78,6 +84,13 @@ void AirEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -90,6 +103,15 @@ void AirEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     const float highAmt  = apvts.getRawParameterValue ("HIGH")->load();
     const float levelDb  = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    lowSmoothed.setTargetValue (lowAmt); highSmoothed.setTargetValue (highAmt);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) lowBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        lowBuffer[(size_t) sample] = lowSmoothed.getNextValue();
+        highBuffer[(size_t) sample] = highSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -105,10 +127,13 @@ void AirEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
             // rango de drive deliberadamente chico: esto es para sutileza,
             // no para un efecto obvio -- si querés algo mas marcado, ese
             // es el trabajo del Exciter de proposito general
-            const float lowExcited  = std::tanh (low * (1.0f + lowAmt * 3.0f));
-            const float highExcited = std::tanh (high * (1.0f + highAmt * 3.0f));
+            const float smoothedLow = lowBuffer[(size_t) sample];
+            const float smoothedHigh = highBuffer[(size_t) sample];
+            const float lowExcited  = std::tanh (low * (1.0f + smoothedLow * 3.0f));
+            const float highExcited = std::tanh (high * (1.0f + smoothedHigh * 3.0f));
 
-            channelData[sample] = (dry + lowExcited * lowAmt * 0.5f + highExcited * highAmt * 0.5f) * outputGain;
+            channelData[sample] = (dry + lowExcited * smoothedLow * 0.5f + highExcited * smoothedHigh * 0.5f)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

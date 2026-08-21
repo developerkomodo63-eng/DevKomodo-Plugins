@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class ConsoleEQAudioProcessor  : public juce::AudioProcessor
 {
@@ -37,7 +38,23 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 
 private:
-    double fs = 44100.0;
-    std::vector<std::unique_ptr<juce::dsp::IIR::Filter<float>>> lowFilters, midFilters, highFilters;
+    // Repurposed from a plain 3-band EQ (which had no actual "console"
+    // character -- just gain knobs, nothing that justified the name) into
+    // a real 3-band multiband drive: split into low/mid/high via cascaded
+    // Linkwitz-Riley crossovers, saturate each band independently. Drive at
+    // 0 is exactly transparent for that band (dry/wet blend per band, not
+    // just a small-gain tanh), so e.g. "saturate the highs, leave the rest
+    // clean" is a real, exact option, not just "less saturated."
+    struct ChannelSplit
+    {
+        juce::dsp::LinkwitzRileyFilter<float> lowLP, lowHP, midLP, midHP;
+        void reset() { lowLP.reset(); lowHP.reset(); midLP.reset(); midHP.reset(); }
+    };
+    std::vector<ChannelSplit> splits;
+    juce::AudioBuffer<float> lowBand, midBand, highBand;
+    juce::SmoothedValue<float> lowDriveSmoothed, midDriveSmoothed, highDriveSmoothed, outputGainSmoothed;
+    std::vector<float> lowDriveBuffer, midDriveBuffer, highDriveBuffer, outputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConsoleEQAudioProcessor)
 };

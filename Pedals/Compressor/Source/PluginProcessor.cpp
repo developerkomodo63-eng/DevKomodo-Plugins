@@ -26,6 +26,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 1.0f));
 
+    // Absorbed from the standalone Limiter plugin: instead of a separate
+    // pedal with its own (differently-behaved) algorithm, Limiter mode here
+    // forces a near-instant attack and a very high effective ratio -- a
+    // brickwall-style ceiling using the same clean gain-computer as
+    // Compressor mode, rather than switching to a different distortion-y
+    // tanh-based algorithm. RATIO/ATTACK stay visible but are ignored while
+    // Limiter mode is active, since a limiter's whole point is that those
+    // aren't user-tunable.
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { "MODE", 1 }, "Mode",
+        juce::StringArray { "Compressor", "Limiter" }, 0));
+
     return { params.begin(), params.end() };
 }
 
@@ -55,6 +67,10 @@ void CompressorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     // recalculan en processBlock; esto es solo un valor inicial razonable
     attackCoeff  = std::exp (-1.0f / (0.008f * (float) sampleRate));
     releaseCoeff = std::exp (-1.0f / (0.120f * (float) sampleRate));
+    makeupGainSmoothed.reset (sampleRate, 0.02);
+    makeupGainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (6.0f));
+    mixSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.setCurrentAndTargetValue (1.0f);
 }
 
 void CompressorAudioProcessor::releaseResources()
@@ -84,6 +100,13 @@ void CompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -98,9 +121,19 @@ void CompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const float releaseMs   = apvts.getRawParameterValue ("RELEASE")->load();
     const float makeupDb    = apvts.getRawParameterValue ("MAKEUP")->load();
     const float mix         = apvts.getRawParameterValue ("MIX")->load();
+    const bool limiterMode  = (int) apvts.getRawParameterValue ("MODE")->load() > 0;
+
+    // Limiter mode: near-instant attack, effectively-infinite ratio. This
+    // reuses the exact same envelope-follower/gain-computer code path below
+    // (just with different constants), rather than a second algorithm.
+    const float effectiveAttackMs = limiterMode ? 0.5f : attackMs;
+    const float effectiveRatio    = limiterMode ? 100.0f : ratio;
+
+    makeupGainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (makeupDb));
+    mixSmoothed.setTargetValue (mix);
 
     const float sr = (float) getSampleRate();
-    attackCoeff  = std::exp (-1.0f / (juce::jmax (attackMs, 0.1f)  / 1000.0f * sr));
+    attackCoeff  = std::exp (-1.0f / (juce::jmax (effectiveAttackMs, 0.1f) / 1000.0f * sr));
     releaseCoeff = std::exp (-1.0f / (juce::jmax (releaseMs, 1.0f) / 1000.0f * sr));
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -117,17 +150,19 @@ void CompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         if (envelopeDb > thresholdDb)
         {
             const float overDb = envelopeDb - thresholdDb;
-            gainReductionDb = overDb - overDb / ratio;
+            gainReductionDb = overDb - overDb / effectiveRatio;
         }
 
-        const float totalGain = juce::Decibels::decibelsToGain (makeupDb - gainReductionDb);
+        const float totalGain = makeupGainSmoothed.getNextValue()
+                      * juce::Decibels::decibelsToGain (-gainReductionDb);
+        const float smoothedMix = mixSmoothed.getNextValue();
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
             float* channelData = buffer.getWritePointer (channel);
             const float dry = channelData[sample];
             const float compressed = dry * totalGain;
-            channelData[sample] = dry * (1.0f - mix) + compressed * mix;
+            channelData[sample] = dry * (1.0f - smoothedMix) + compressed * smoothedMix;
         }
     }
 }

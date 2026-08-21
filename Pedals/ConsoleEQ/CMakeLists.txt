@@ -7,8 +7,8 @@ juce_add_plugin(ConsoleEQ
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Ceq1
-    FORMATS                     VST3
-    PRODUCT_NAME                "Console EQ")
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
+    PRODUCT_NAME                "Multiband Drive")
 
 target_sources(ConsoleEQ
     PRIVATE

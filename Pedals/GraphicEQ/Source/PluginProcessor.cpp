@@ -79,6 +79,13 @@ void GraphicEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -92,7 +99,7 @@ void GraphicEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     std::array<std::array<float, 6>, numBands> coeffs;
     static constexpr const char* bandIds[numBands] =
-        { "BAND0", "BAND1", "BAND2", "BAND3", "BAND4", "BAND5", "BAND6", "BAND7" };
+        { "BAND0", "BAND1", "BAND2", "BAND3", "BAND4", "BAND5", "BAND6", "BAND7", "BAND8", "BAND9" };
 
     for (int i = 0; i < numBands; ++i)
     {

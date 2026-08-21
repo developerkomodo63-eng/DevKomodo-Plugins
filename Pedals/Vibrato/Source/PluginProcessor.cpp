@@ -49,6 +49,12 @@ void VibratoAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBl
     const int lineLength = (int) (maxLineMs / 1000.0 * sampleRate) + 4;
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    rateSmoothed.reset (sampleRate, 0.02);
+    depthSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    rateBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    depthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void VibratoAudioProcessor::releaseResources()
@@ -78,6 +84,13 @@ void VibratoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -94,18 +107,30 @@ void VibratoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
     const float depth   = apvts.getRawParameterValue ("DEPTH")->load();
     const float mix     = apvts.getRawParameterValue ("MIX")->load();
+    rateSmoothed.setTargetValue (rateHz);
+    depthSmoothed.setTargetValue (depth);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) rateBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();
+        depthBuffer[(size_t) sample] = depthSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
-    const float phaseInc = rateHz / (float) sampleRate;
     constexpr float baseLineMs = 7.0f;
     constexpr float maxModMs = 6.0f;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = rateBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedDepth = depthBuffer[(size_t) sample];
+        const float smoothedMix = mixBuffer[(size_t) sample];
         lfoPhase += phaseInc;
         if (lfoPhase >= 1.0f)
             lfoPhase -= 1.0f;
 
-        const float modMs = depth * maxModMs * std::sin (juce::MathConstants<float>::twoPi * lfoPhase);
+        const float modMs = smoothedDepth * maxModMs * std::sin (juce::MathConstants<float>::twoPi * lfoPhase);
         const float delayMs = juce::jmax (0.5f, baseLineMs + modMs);
         const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
@@ -130,7 +155,7 @@ void VibratoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             line[(size_t) wp] = input;
             wp = (wp + 1) % lineLength;
 
-            channelData[sample] = input * (1.0f - mix) + wet * mix;
+            channelData[sample] = input * (1.0f - smoothedMix) + wet * smoothedMix;
         }
     }
 }

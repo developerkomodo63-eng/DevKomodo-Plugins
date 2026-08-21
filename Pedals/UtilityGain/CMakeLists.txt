@@ -7,7 +7,7 @@ juce_add_plugin(UtilityGain
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Ugai
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Utility Gain")
 
 target_sources(UtilityGain

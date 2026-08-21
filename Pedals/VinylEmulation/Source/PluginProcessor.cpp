@@ -54,6 +54,10 @@ void VinylEmulationAudioProcessor::prepareToPlay (double sampleRateIn, int sampl
     const int lineLength = (int) (maxLineMs / 1000.0 * sampleRate) + 4;
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    wowSmoothed.reset (sampleRate, 0.02); crackleSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02); outputGainSmoothed.reset (sampleRate, 0.02);
+    wowBuffer.assign ((size_t) samplesPerBlock, 0.0f); crackleBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f); outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     crackleRng.setSeedRandomly();
     crackleEnvelope = 0.0f;
@@ -86,6 +90,13 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -100,6 +111,16 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const float mix      = apvts.getRawParameterValue ("MIX")->load();
     const float levelDb  = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    wowSmoothed.setTargetValue (wowAmt); crackleSmoothed.setTargetValue (crackle);
+    mixSmoothed.setTargetValue (mix); outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) wowBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        wowBuffer[(size_t) sample] = wowSmoothed.getNextValue();
+        crackleBuffer[(size_t) sample] = crackleSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // "Age" angosta el ancho de banda: mas viejo = mas parecido a un
     // parlante de bocina, menos fidelidad
@@ -117,7 +138,6 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const float wowInc = wowRateHz / (float) sampleRate;
 
     // probabilidad de que arranque un nuevo "pop" en esta muestra
-    const float popProbability = crackle * 0.0015f;
     constexpr float crackleDecay = 0.75f; // pop corto y seco
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -125,14 +145,14 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         wowPhase += wowInc;
         if (wowPhase >= 1.0f) wowPhase -= 1.0f;
 
-        const float wowMod = wowAmt * wowMaxMs * std::sin (juce::MathConstants<float>::twoPi * wowPhase);
+        const float wowMod = wowBuffer[(size_t) sample] * wowMaxMs * std::sin (juce::MathConstants<float>::twoPi * wowPhase);
         const float delayMs = juce::jmax (0.5f, baseLineMs + wowMod);
         const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
         // un solo generador de crackle compartido entre canales (el polvo
         // afecta al surco entero, no a cada canal por separado -- una
         // simplificacion razonable frente al crosstalk real de un vinilo)
-        if (crackleRng.nextFloat() < popProbability)
+        if (crackleRng.nextFloat() < crackleBuffer[(size_t) sample] * 0.0015f)
             crackleEnvelope = 0.4f + crackleRng.nextFloat() * 0.6f;
         crackleEnvelope *= crackleDecay;
         const float crackleSample = crackleEnvelope * (crackleRng.nextFloat() * 2.0f - 1.0f);
@@ -162,7 +182,9 @@ void VinylEmulationAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             wet = (channel == 0) ? lpFilterL.processSample (wet) : lpFilterR.processSample (wet);
             wet += crackleSample * 0.15f;
 
-            channelData[sample] = (dry * (1.0f - mix) + wet * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry * (1.0f - smoothedMix) + wet * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

@@ -31,6 +31,12 @@ void ClipperAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
 {
     juce::ignoreUnused (samplesPerBlock);
     fs = sampleRate;
+    thresholdSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    makeupSmoothed.reset (sampleRate, 0.02);
+    thresholdBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    makeupBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void ClipperAudioProcessor::releaseResources() {}
@@ -55,6 +61,13 @@ bool ClipperAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 void ClipperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
     const int numCh = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const int numSamples = buffer.getNumSamples();
 
@@ -62,15 +75,28 @@ void ClipperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const float mix = apvts.getRawParameterValue ("MIX")->load();
     const float makeupDb = apvts.getRawParameterValue ("MAKEUP")->load();
     const float makeup = juce::Decibels::decibelsToGain (makeupDb);
+    thresholdSmoothed.setTargetValue (thresh);
+    mixSmoothed.setTargetValue (mix);
+    makeupSmoothed.setTargetValue (makeup);
+    jassert (numSamples <= (int) thresholdBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        thresholdBuffer[(size_t) sample] = thresholdSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        makeupBuffer[(size_t) sample] = makeupSmoothed.getNextValue();
+    }
 
     for (int ch = 0; ch < numCh; ++ch)
     {
         float* data = buffer.getWritePointer (ch);
         for (int i = 0; i < numSamples; ++i)
         {
-            float in = data[i] * makeup;
-            float clipped = juce::jlimit (-thresh, thresh, in);
-            float out = in * (1.0f - mix) + clipped * mix;
+            const float smoothedMakeup = makeupBuffer[(size_t) i];
+            const float smoothedThreshold = thresholdBuffer[(size_t) i];
+            const float smoothedMix = mixBuffer[(size_t) i];
+            float in = data[i] * smoothedMakeup;
+            float clipped = juce::jlimit (-smoothedThreshold, smoothedThreshold, in);
+            float out = in * (1.0f - smoothedMix) + clipped * smoothedMix;
             data[i] = out;
         }
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <array>
 
 class PhaserAudioProcessor : public juce::AudioProcessor
@@ -50,6 +51,8 @@ private:
 
     double sampleRate = 44100.0;
     float lfoPhase = 0.0f;
+    juce::SmoothedValue<float> rateSmoothed, depthSmoothed, feedbackSmoothed, mixSmoothed;
+    std::vector<float> rateBuffer, depthBuffer, feedbackBuffer, mixBuffer;
 
     static float processAllpass (AllpassState& state, float x, float a) noexcept
     {

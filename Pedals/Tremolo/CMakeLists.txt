@@ -7,7 +7,7 @@ juce_add_plugin(Tremolo
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Trm1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Tremolo")
 
 target_sources(Tremolo

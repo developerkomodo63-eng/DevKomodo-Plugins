@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class AutoSwellAudioProcessor : public juce::AudioProcessor
 {
@@ -50,6 +51,8 @@ private:
     float lastEnvelope = 0.0f;
 
     double sampleRate = 44100.0;
+    juce::SmoothedValue<float> swellTimeSmoothed, thresholdSmoothed, mixSmoothed, outputGainSmoothed;
+    std::vector<float> swellTimeBuffer, thresholdBuffer, mixBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutoSwellAudioProcessor)
 };

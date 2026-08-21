@@ -18,6 +18,8 @@ private:
     juce::Label fileLabel;
     std::unique_ptr<DevKomodoUniversalEditor> editor;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    DevKomodoKnobLookAndFeel controlsLookAndFeel { juce::Colour::fromRGB (45, 180, 196) };
+    juce::TooltipWindow tooltipWindow { this, 650 };
 
     void updateFileLabel();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConvolutionReverbAudioProcessorEditor)

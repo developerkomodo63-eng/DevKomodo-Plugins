@@ -98,6 +98,16 @@ void ReverbAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     }
     shimmerFeedbackBuffer.setSize ((int) spec.numChannels, samplesPerBlock);
     shimmerFeedbackBuffer.clear();
+    roomSizeSmoothed.reset (sampleRate, 0.04);
+    dampingSmoothed.reset (sampleRate, 0.04);
+    widthSmoothed.reset (sampleRate, 0.04);
+    mixSmoothed.reset (sampleRate, 0.04);
+    shimmerSmoothed.reset (sampleRate, 0.04);
+    roomSizeSmoothed.setCurrentAndTargetValue (0.5f);
+    dampingSmoothed.setCurrentAndTargetValue (0.5f);
+    widthSmoothed.setCurrentAndTargetValue (1.0f);
+    mixSmoothed.setCurrentAndTargetValue (0.3f);
+    shimmerSmoothed.setCurrentAndTargetValue (0.0f);
 }
 
 void ReverbAudioProcessor::releaseResources()
@@ -173,6 +183,13 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -221,10 +238,21 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     if (bassMode)
         mappedWidth *= 0.45f;
 
+    roomSizeSmoothed.setTargetValue (mappedSize);
+    dampingSmoothed.setTargetValue (mappedDamping);
+    widthSmoothed.setTargetValue (mappedWidth);
+    mixSmoothed.setTargetValue (mix);
+    shimmerSmoothed.setTargetValue (shimmer);
+    const float smoothedRoomSize = roomSizeSmoothed.getNextValue();
+    const float smoothedDamping = dampingSmoothed.getNextValue();
+    const float smoothedWidth = widthSmoothed.getNextValue();
+    const float smoothedMix = mixSmoothed.getNextValue();
+    const float smoothedShimmer = shimmerSmoothed.getNextValue();
+
     juce::dsp::Reverb::Parameters params;
-    params.roomSize   = mappedSize;
-    params.damping    = mappedDamping;
-    params.width      = mappedWidth;
+    params.roomSize   = smoothedRoomSize;
+    params.damping    = smoothedDamping;
+    params.width      = smoothedWidth;
     params.freezeMode = freeze ? 1.0f : 0.0f;
     // mezclamos el mix nosotros mismos abajo; el wet/dry interno del
     // algoritmo no es un crossfade lineal
@@ -243,7 +271,7 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         float* channelData = buffer.getWritePointer (channel);
         const float* feedback = shimmerFeedbackBuffer.getReadPointer (channel);
         for (int sample = 0; sample < numSamples; ++sample)
-            channelData[sample] += feedback[sample] * shimmer;
+            channelData[sample] += feedback[sample] * smoothedShimmer;
     }
 
     juce::dsp::AudioBlock<float> block (buffer);
@@ -255,7 +283,7 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     constexpr float grainSizeMs = 40.0f;
     const float grainSizeSamples = grainSizeMs / 1000.0f * (float) getSampleRate();
 
-    if (shimmer > 1.0e-4f)
+    if (smoothedShimmer > 1.0e-4f)
     {
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
@@ -291,7 +319,7 @@ void ReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         for (int sample = 0; sample < numSamples; ++sample)
         {
             const float wetFiltered = bassFilter.processSample (0, wet[sample]);
-            wet[sample] = dry[sample] * (1.0f - mix) + wetFiltered * mix;
+            wet[sample] = dry[sample] * (1.0f - smoothedMix) + wetFiltered * smoothedMix;
         }
     }
 }

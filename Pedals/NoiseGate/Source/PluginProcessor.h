@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class NoiseGateAudioProcessor : public juce::AudioProcessor
 {
@@ -41,6 +42,8 @@ private:
     // deteccion de nivel a partir del canal 0, linkeada a todos los canales
     float envelopeDb = -100.0f;
     float attackCoeff = 0.0f, releaseCoeff = 0.0f;
+    juce::SmoothedValue<float> thresholdSmoothed, rangeSmoothed;
+    std::vector<float> thresholdBuffer, rangeBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NoiseGateAudioProcessor)
 };

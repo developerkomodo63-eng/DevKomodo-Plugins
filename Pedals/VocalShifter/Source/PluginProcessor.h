@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class VocalShifterAudioProcessor final : public juce::AudioProcessor
 {
@@ -121,5 +122,7 @@ private:
     std::vector<FormantBank> formants;
     juce::AudioBuffer<float> dryBuffer;
     double sampleRate=44100.0;
+    juce::SmoothedValue<float> driveSmoothed, mixSmoothed, outputSmoothed;
+    std::vector<float> driveBuffer, mixBuffer, outputBuffer;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VocalShifterAudioProcessor)
 };

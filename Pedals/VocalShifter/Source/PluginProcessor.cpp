@@ -29,6 +29,9 @@ void VocalShifterAudioProcessor::prepareToPlay(double sr,int block)
     dryBuffer.setSize(getTotalNumOutputChannels(),block,false,false,true);
     formants.resize(getTotalNumOutputChannels());
     for(auto& f:formants) f.reset();
+    driveSmoothed.reset (sr, 0.02); mixSmoothed.reset (sr, 0.02); outputSmoothed.reset (sr, 0.02);
+    driveBuffer.assign ((size_t) block, 0.0f); mixBuffer.assign ((size_t) block, 1.0f);
+    outputBuffer.assign ((size_t) block, 1.0f);
 }
 void VocalShifterAudioProcessor::releaseResources(){ shifter.reset(); dryBuffer.setSize(0,0); }
 bool VocalShifterAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const
@@ -38,6 +41,13 @@ bool VocalShifterAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) co
 void VocalShifterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi)
 {
     juce::ignoreUnused(midi); juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
     const int in=getTotalNumInputChannels(), out=getTotalNumOutputChannels(), n=buffer.getNumSamples();
     for(int c=in;c<out;++c) buffer.clear(c,0,n);
     for(int c=0;c<in;++c) dryBuffer.copyFrom(c,0,buffer,c,0,n);
@@ -47,6 +57,14 @@ void VocalShifterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,j
     const float drive=apvts.getRawParameterValue("DRIVE")->load();
     const float mix=apvts.getRawParameterValue("MIX")->load();
     const float output=juce::Decibels::decibelsToGain(apvts.getRawParameterValue("OUTPUT")->load());
+    driveSmoothed.setTargetValue (drive); mixSmoothed.setTargetValue (mix); outputSmoothed.setTargetValue (output);
+    jassert (n <= (int) driveBuffer.size());
+    for (int s = 0; s < n; ++s)
+    {
+        driveBuffer[(size_t) s] = driveSmoothed.getNextValue();
+        mixBuffer[(size_t) s] = mixSmoothed.getNextValue();
+        outputBuffer[(size_t) s] = outputSmoothed.getNextValue();
+    }
     float ratio=std::pow(2.0f,pitch/12.0f);
     if(mode==1) ratio=std::pow(2.0f,std::round(pitch)/12.0f);
     shifter.setPitchRatio (ratio);
@@ -58,7 +76,6 @@ void VocalShifterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,j
     }
     const float formantRatio=std::pow(2.0f,formant/12.0f);
     const float modeHigh=(mode==2?1.8f:(mode==3?0.55f:1.0f));
-    const float driveGain=juce::Decibels::decibelsToGain(drive);
     const float formantGain=juce::Decibels::decibelsToGain(formant*0.22f);
     for(int c=0;c<in;++c)
     {
@@ -80,9 +97,12 @@ void VocalShifterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,j
             wet=bank.f3.processSample(wet);
             if(mode==2) wet=std::tanh(wet*1.05f*modeHigh);
             else if(mode==3) wet*=0.86f;
-            if(drive>0.001f) wet=std::tanh(wet*driveGain)/std::tanh(driveGain);
+            const float smoothedDrive = driveBuffer[(size_t) s];
+            const float driveGain=juce::Decibels::decibelsToGain(smoothedDrive);
+            if(smoothedDrive>0.001f) wet=std::tanh(wet*driveGain)/std::tanh(driveGain);
             if(mode==1) wet=std::tanh(wet*1.35f);
-            d[s]=(dry[s]*(1.0f-mix)+wet*mix)*output;
+            const float smoothedMix = mixBuffer[(size_t) s];
+            d[s]=(dry[s]*(1.0f-smoothedMix)+wet*smoothedMix)*outputBuffer[(size_t) s];
         }
     }
 }

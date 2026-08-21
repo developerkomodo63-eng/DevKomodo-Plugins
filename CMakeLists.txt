@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(DEVKOMODO_DEMO_BUILD "Build the time-limited commercial demo" OFF)
+if(DEVKOMODO_DEMO_BUILD)
+    add_compile_definitions(DEVKOMODO_DEMO_BUILD=1)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
@@ -17,10 +22,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(JUCE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(JUCE_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
-# This distribution is intentionally Windows-only. GitHub Actions and release
-# artifacts target 64-bit Windows VST3 with the MSVC toolchain.
-if(NOT WIN32)
-    message(FATAL_ERROR "DevKomodo Pedals is Windows-only and builds VST3 only.")
+if(APPLE)
+    set(DEVKOMODO_PLUGIN_FORMATS VST3 AU)
+else()
+    set(DEVKOMODO_PLUGIN_FORMATS VST3)
 endif()
 
 # Descarga JUCE UNA sola vez; todos los pedales de abajo la comparten.
@@ -52,7 +57,8 @@ add_subdirectory(Pedals/EnvelopeFilterGuitar)
 add_subdirectory(Pedals/OctaverGuitar)
 add_subdirectory(Pedals/MultibandCompressor)
 add_subdirectory(Pedals/Preamp)
-add_subdirectory(Pedals/Saturator)
+# Saturator merged into ToneSculptor (its Diode/Hard clipping styles were
+# ported in as extra STYLE options) -- no longer built as a separate plugin.
 add_subdirectory(Pedals/VocalShifter)
 add_subdirectory(Pedals/Flanger)
 add_subdirectory(Pedals/AmpSim)
@@ -77,7 +83,8 @@ add_subdirectory(Pedals/SpringReverb)
 add_subdirectory(Pedals/TapeDelay)
 add_subdirectory(Pedals/GlitchMachine)
 add_subdirectory(Pedals/Granulator)
-add_subdirectory(Pedals/Limiter)
+# Limiter merged into Compressor as a Mode switch (Compressor/Limiter) --
+# no longer built as a separate plugin.
 add_subdirectory(Pedals/Clipper)
 add_subdirectory(Pedals/ConsoleEQ)
 add_subdirectory(Pedals/UtilityGain)

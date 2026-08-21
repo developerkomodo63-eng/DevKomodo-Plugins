@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <vector>
 
 class ToneSculptorAudioProcessor  : public juce::AudioProcessor
@@ -48,5 +49,11 @@ private:
     // low/high split fixes both.
     std::vector<float> dcX1, dcY1;
     float dcR = 0.995f;
+    juce::SmoothedValue<float> driveSmoothed;
+    juce::SmoothedValue<float> mixSmoothed;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> driveBuffer, mixBuffer, outputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToneSculptorAudioProcessor)
 };

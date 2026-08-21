@@ -7,7 +7,7 @@ juce_add_plugin(NoiseGate
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Ngt1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Noise Gate")
 
 target_sources(NoiseGate

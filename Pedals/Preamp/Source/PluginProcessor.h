@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class PreampAudioProcessor : public juce::AudioProcessor
 {
@@ -55,6 +56,8 @@ private:
 
     juce::AudioBuffer<float> dryBuffer;
     double currentSampleRate = 44100.0;
+    juce::SmoothedValue<float> driveSmoothed, blendSmoothed, outputGainSmoothed;
+    std::vector<float> driveBuffer, blendBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PreampAudioProcessor)
 };

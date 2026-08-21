@@ -36,6 +36,12 @@ void BroadcastCompressorAudioProcessor::prepareToPlay (double sampleRate, int sa
 {
     juce::ignoreUnused (samplesPerBlock);
     envelopeDb = -100.0f;
+    compressionSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    compressionBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    compressionSmoothed.setCurrentAndTargetValue (0.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
 
     // tiempos fijos tipo opto: ataque moderado (no clava transitorios),
     // release largo (suaviza, "invisible", tipico de compresion de radio/vivo)
@@ -70,6 +76,13 @@ void BroadcastCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -81,12 +94,18 @@ void BroadcastCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
     const float compression = apvts.getRawParameterValue ("COMPRESSION")->load();
     const float levelDb     = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain  = juce::Decibels::decibelsToGain (levelDb);
+    compressionSmoothed.setTargetValue (compression);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) compressionBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        compressionBuffer[(size_t) sample] = compressionSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // un solo knob mapea threshold y ratio juntos (0 = casi sin comprimir,
     // 10 = bastante agresivo), como el "amount" de un compresor de un solo
     // control
-    const float threshold = juce::jmap (compression, 0.0f, 10.0f, -6.0f, -36.0f);
-    const float ratio      = juce::jmap (compression, 0.0f, 10.0f, 1.5f, 8.0f);
     constexpr float kneeWidth = 8.0f; // rodilla suave, mas musical que un hard-knee
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -98,20 +117,23 @@ void BroadcastCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
         envelopeDb = peakDb + envCoeff * (envelopeDb - peakDb);
 
         float gainReductionDb = 0.0f;
-        const float kneeLow = threshold - kneeWidth * 0.5f;
-        const float kneeHigh = threshold + kneeWidth * 0.5f;
+        const float smoothedCompression = compressionBuffer[(size_t) sample];
+        const float smoothedThreshold = juce::jmap (smoothedCompression, 0.0f, 10.0f, -6.0f, -36.0f);
+        const float smoothedRatio = juce::jmap (smoothedCompression, 0.0f, 10.0f, 1.5f, 8.0f);
+        const float kneeLow = smoothedThreshold - kneeWidth * 0.5f;
+        const float kneeHigh = smoothedThreshold + kneeWidth * 0.5f;
 
         if (envelopeDb > kneeHigh)
         {
-            const float overDb = envelopeDb - threshold;
-            gainReductionDb = overDb - overDb / ratio;
+            const float overDb = envelopeDb - smoothedThreshold;
+            gainReductionDb = overDb - overDb / smoothedRatio;
         }
         else if (envelopeDb > kneeLow)
         {
             // interpolacion cuadratica dentro de la rodilla (formula
             // estandar de soft-knee)
             const float x = envelopeDb - kneeLow;
-            gainReductionDb = ((1.0f / ratio - 1.0f) * x * x) / (2.0f * kneeWidth);
+            gainReductionDb = ((1.0f / smoothedRatio - 1.0f) * x * x) / (2.0f * kneeWidth);
         }
 
         const float gain = juce::Decibels::decibelsToGain (-gainReductionDb);
@@ -119,7 +141,7 @@ void BroadcastCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
             float* channelData = buffer.getWritePointer (channel);
-            channelData[sample] = channelData[sample] * gain * outputGain;
+            channelData[sample] = channelData[sample] * gain * outputGainBuffer[(size_t) sample];
         }
     }
 }

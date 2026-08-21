@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/ParameterTooltips.h"
+#include "../../Common/PresetProfiles.h"
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -104,7 +106,7 @@ public:
                               juce::AudioProcessorValueTreeState& state,
                               juce::String productName,
                               juce::Colour accentColour = juce::Colour::fromRGB (111, 218, 175))
-        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour), knobLookAndFeel (accentColour)
+        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour), knobLookAndFeel (accentColour), tooltipWindow (this, 650)
     {
         setOpaque (true);
         setResizable (true, true);
@@ -119,8 +121,13 @@ public:
         const bool premiumProduct = name.toUpperCase().contains ("CLEANUP PRO")
                                   || name.toUpperCase().contains ("TONE SCULPTOR")
                                   || name.toUpperCase().contains ("AMPSIM")
+                                  || name.toUpperCase().contains ("MULTIBAND DRIVE")
                                   || name.toUpperCase().contains ("CONVOLUTION REVERB");
+#if defined (DEVKOMODO_DEMO_BUILD)
+        brand.setText ("DEVKOMODO  •  DEMO  •  15 MIN", juce::dontSendNotification);
+#else
         brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
+#endif
         brand.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold)));
         // Blend the accent with white (rather than using the raw accent at
         // partial alpha) so the brand text stays clearly legible even for
@@ -139,10 +146,23 @@ public:
         {
             const int id = presetBox.getSelectedId();
             if (id >= 2 && id - 2 < (int) factoryPresets.size())
+            {
                 applyPreset (factoryPresets[(size_t) id - 2]);
+                presetDescription.setText (describePreset (factoryPresets[(size_t) id - 2].name), juce::dontSendNotification);
+            }
+            else
+            {
+                presetDescription.setText (describePreset ("MANUAL"), juce::dontSendNotification);
+            }
         };
         presetBox.setTooltip ("Select a factory preset or MANUAL");
+        presetBox.setLookAndFeel (&knobLookAndFeel);
         addAndMakeVisible (presetBox);
+        presetDescription.setText (describePreset ("MANUAL"), juce::dontSendNotification);
+        presetDescription.setFont (juce::Font (juce::FontOptions (10.0f)));
+        presetDescription.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.58f));
+        presetDescription.setTooltip ("Brief description of the selected factory preset");
+        addAndMakeVisible (presetDescription);
 
         if (apvts.getParameter ("INSTRUMENT") != nullptr)
         {
@@ -189,7 +209,7 @@ public:
 
                 c.box = std::make_unique<juce::ComboBox>();
                 c.box->addItemList (choice->choices, 1);
-                c.box->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                c.box->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 c.box->setLookAndFeel (&knobLookAndFeel);
                 c.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
                     (apvts, id, *c.box);
@@ -203,7 +223,7 @@ public:
             {
                 Toggle t;
                 t.button = std::make_unique<juce::ToggleButton> (ranged->name);
-                t.button->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                t.button->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 t.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>
                     (apvts, id, *t.button);
                 addAndMakeVisible (*t.button);
@@ -225,7 +245,7 @@ public:
                 k.slider->setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB (14, 16, 20));
                 k.slider->setColour (juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB (55, 60, 70));
                 k.slider->setColour (juce::Slider::textBoxHighlightColourId, accent.withAlpha (0.25f));
-                k.slider->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                k.slider->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 const auto upperID = id.toUpperCase();
                 const bool showPercent = (upperID == "MIX" || upperID == "DEPTH" || upperID == "WIDTH"
                                        || upperID == "WET" || upperID == "FEEDBACK" || upperID == "AMOUNT"
@@ -307,6 +327,7 @@ public:
             if (k.slider != nullptr) k.slider->setLookAndFeel (nullptr);
         for (auto& c : choices)
             if (c.box != nullptr) c.box->setLookAndFeel (nullptr);
+        presetBox.setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -381,6 +402,9 @@ public:
         bounds.removeFromTop (12);
         auto footer = bounds.removeFromBottom (30);
         bounds.removeFromBottom (8);
+
+        auto presetInfo = footer.removeFromLeft (juce::jmin (300, footer.getWidth() / 2));
+        presetDescription.setBounds (presetInfo.reduced (3, 2));
 
         std::vector<juce::Component*> controls;
         std::vector<juce::Component*> labels;
@@ -513,6 +537,25 @@ private:
     }
 
 
+    static juce::String describePreset (const juce::String& presetName)
+    {
+        const auto preset = presetName.toUpperCase();
+        if (preset == "MANUAL") return "MANUAL - edit the controls freely";
+        if (preset == "INIT") return "INIT - neutral starting point";
+        if (preset == "CLEAN") return "CLEAN - controlled dynamics and subtle colour";
+        if (preset == "PUNCH") return "PUNCH - tighter attack and forward mids";
+        if (preset == "WIDE") return "WIDE - broader movement and space";
+        if (preset == "EXTREME") return "EXTREME - maximum character and intensity";
+        if (preset == "CRUNCH") return "CRUNCH - responsive edge-of-breakup drive";
+        if (preset == "RHYTHM") return "RHYTHM - focused, mix-ready rhythm tone";
+        if (preset == "LEAD") return "LEAD - sustain and upper-mid presence";
+        if (preset == "HEAVY") return "HEAVY - dense high-gain character";
+        if (preset == "ROOM") return "ROOM - short, natural ambience";
+        if (preset == "PLATE") return "PLATE - bright, smooth sustain";
+        if (preset == "HALL") return "HALL - spacious decay for open parts";
+        if (preset == "ARENA") return "ARENA - long, dramatic space";
+        return presetName + " - factory starting point";
+    }
     juce::AudioProcessorParameter* findParameterById (const juce::String& id) const
     {
         for (auto* parameter : processorRef.getParameters())
@@ -604,6 +647,7 @@ private:
         else if (category.contains ("FILTER")) names = juce::StringArray { "INIT", "FUNK", "QUACK", "SWEEP", "SYNTH" };
         else if (category.contains ("CLEANUP PRO")) names = juce::StringArray { "INIT", "VOCAL", "GUITAR", "PUNCH", "SURGICAL" };
         else if (category.contains ("TONE SCULPTOR")) names = juce::StringArray { "INIT", "WARM", "BRIGHT", "BODY", "MODERN" };
+        else if (category.contains ("MULTIBAND DRIVE")) names = juce::StringArray { "INIT", "AIR", "PRESENCE", "GRIT", "CRUSH" };
         else if (category.contains ("AMPSIM")) names = juce::StringArray { "INIT", "CLEAN", "CRUNCH", "LEAD", "MODERN" };
 
         std::vector<Preset> result;
@@ -759,13 +803,35 @@ private:
                 }
                 setPresetValue ("LEVEL", levels[idx]);
             }
-            else if (category == "CONSOLE EQ" && presetIndex > 0)
+            else if (category == "COMPRESSOR" && presetIndex > 0)
             {
-                static constexpr float values[4][3] = {
-                    { -3.0f, 0.0f, 1.0f }, { -1.0f, 0.0f, 4.0f },
-                    { 0.0f, 2.0f, 2.0f }, { 2.0f, -3.0f, 3.0f } };
+                // The 4th preset is literally named "LIMIT" -- make sure it
+                // actually switches into the new Limiter mode, not just a
+                // higher ratio while staying in Compressor mode.
+                static constexpr float threshold[4] = { -18.0f, -14.0f, -22.0f, -10.0f };
+                static constexpr float ratio[4]     = { 3.0f, 5.0f, 2.5f, 4.0f };
+                static constexpr float attack[4]    = { 15.0f, 5.0f, 25.0f, 0.5f };
+                static constexpr float release[4]   = { 150.0f, 90.0f, 220.0f, 60.0f };
+                static constexpr float makeup[4]    = { 4.0f, 6.0f, 3.0f, 8.0f };
+                static constexpr float mode[4]      = { 0.0f, 0.0f, 0.0f, 1.0f }; // Limit -> Limiter mode
+                const int idx = juce::jlimit (0, 3, presetIndex - 1);
+                setPresetValue ("THRESHOLD", threshold[idx]); setPresetValue ("RATIO", ratio[idx]);
+                setPresetValue ("ATTACK", attack[idx]); setPresetValue ("RELEASE", release[idx]);
+                setPresetValue ("MAKEUP", makeup[idx]); setPresetValue ("MODE", mode[idx]);
+            }
+            else if (category == "MULTIBAND DRIVE" && presetIndex > 0)
+            {
+                // xoverLow, xoverHigh, lowDrive, midDrive, highDrive, level
+                static constexpr float values[4][6] = {
+                    { 500.0f, 3500.0f, 0.0f, 0.0f, 2.5f, 0.0f },  // Air: gentle high-band air
+                    { 350.0f, 2800.0f, 0.0f, 1.5f, 4.0f, 0.5f },  // Presence: mid+high forward
+                    { 300.0f, 2200.0f, 2.0f, 3.0f, 5.5f, -1.0f }, // Grit: all three bands driven
+                    { 250.0f, 1800.0f, 4.0f, 6.0f, 8.0f, -3.0f }  // Crush: heavy across the board
+                };
                 const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
-                setPresetValue ("LOW", v[0]); setPresetValue ("MID", v[1]); setPresetValue ("HIGH", v[2]);
+                setPresetValue ("XOVERLOW", v[0]); setPresetValue ("XOVERHIGH", v[1]);
+                setPresetValue ("LOWDRIVE", v[2]); setPresetValue ("MIDDRIVE", v[3]);
+                setPresetValue ("HIGHDRIVE", v[4]); setPresetValue ("LEVEL", v[5]);
             }
             else if (category == "GRAPHIC EQ" && presetIndex > 0)
             {
@@ -779,6 +845,9 @@ private:
                 for (int b = 0; b < 10; ++b)
                     setPresetValue ("BAND" + juce::String (b), v[b]);
             }
+
+            for (const auto& [id, value] : devkomodo::curatedPresetValues (category, presetIndex))
+                setPresetValue (id, value);
 
             result.push_back (std::move (p));
         }
@@ -797,10 +866,11 @@ private:
     juce::String name;
     juce::Colour accent;
 
-    juce::Label title, brand;
+    juce::Label title, brand, presetDescription;
     juce::ComboBox presetBox;
     juce::TextButton instrumentButton;
     DevKomodoKnobLookAndFeel knobLookAndFeel;
+    juce::TooltipWindow tooltipWindow;
     std::vector<Knob> knobs;
     std::vector<Choice> choices;
     std::vector<Toggle> toggles;

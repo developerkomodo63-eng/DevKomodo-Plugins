@@ -67,6 +67,18 @@ void ChorusAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBlo
 
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    rateSmoothed.reset (sampleRate, 0.02);
+    depthSmoothed.reset (sampleRate, 0.02);
+    centreDelaySmoothed.reset (sampleRate, 0.02);
+    widthSmoothed.reset (sampleRate, 0.02);
+    feedbackSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    rateBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    depthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    centreDelayBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    widthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    feedbackBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void ChorusAudioProcessor::releaseResources()
@@ -96,6 +108,13 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -125,10 +144,31 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float effectiveWidth = bassMode ? 0.0f : width;
 
     const int numVoices = voicesChoice + 1; // choice 0..2 -> 1,2,3
-    const float phaseInc = rateHz / (float) sampleRate;
+    rateSmoothed.setTargetValue (rateHz);
+    depthSmoothed.setTargetValue (depth);
+    centreDelaySmoothed.setTargetValue (centreDelay);
+    widthSmoothed.setTargetValue (effectiveWidth);
+    feedbackSmoothed.setTargetValue (feedback);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) rateBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();
+        depthBuffer[(size_t) sample] = depthSmoothed.getNextValue();
+        centreDelayBuffer[(size_t) sample] = centreDelaySmoothed.getNextValue();
+        widthBuffer[(size_t) sample] = widthSmoothed.getNextValue();
+        feedbackBuffer[(size_t) sample] = feedbackSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = rateBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedDepth = depthBuffer[(size_t) sample];
+        const float smoothedCentreDelay = centreDelayBuffer[(size_t) sample];
+        const float smoothedWidth = widthBuffer[(size_t) sample];
+        const float smoothedFeedback = feedbackBuffer[(size_t) sample];
+        const float smoothedMix = mixBuffer[(size_t) sample];
         masterPhase += phaseInc;
         if (masterPhase >= 1.0f)
             masterPhase -= 1.0f;
@@ -142,7 +182,7 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
             // desfasa el LFO del canal derecho, asi las voces se mueven
             // distinto entre L y R y el chorus se siente ancho de verdad
-            const float channelPhaseOffset = (channel == 1) ? effectiveWidth * 0.25f : 0.0f;
+            const float channelPhaseOffset = (channel == 1) ? smoothedWidth * 0.25f : 0.0f;
 
             float wetSum = 0.0f;
             for (int v = 0; v < numVoices; ++v)
@@ -151,9 +191,9 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 float phase = masterPhase + channelPhaseOffset + voiceOffset;
                 phase -= std::floor (phase);
 
-                const float modMs = depth * ChorusAudioProcessor::maxModMs
+                const float modMs = smoothedDepth * ChorusAudioProcessor::maxModMs
                                      * std::sin (juce::MathConstants<float>::twoPi * phase);
-                const float delayMs = juce::jmax (0.5f, centreDelay + modMs);
+                const float delayMs = juce::jmax (0.5f, smoothedCentreDelay + modMs);
                 const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
                 float readPosF = (float) wp - delaySamples;
@@ -170,10 +210,10 @@ void ChorusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             const float wet = wetSum / (float) numVoices;
             const float input = channelData[sample];
 
-            line[(size_t) wp] = input + wet * feedback;
+            line[(size_t) wp] = input + wet * smoothedFeedback;
             wp = (wp + 1) % lineLength;
 
-            channelData[sample] = input * (1.0f - mix) + wet * mix;
+            channelData[sample] = input * (1.0f - smoothedMix) + wet * smoothedMix;
         }
     }
 }

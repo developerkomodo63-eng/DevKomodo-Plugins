@@ -28,6 +28,9 @@ UtilityGainAudioProcessor::~UtilityGainAudioProcessor() {}
 
 void UtilityGainAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    gainSmoothed.reset (sampleRate, 0.02);
+    gainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    gainSmoothed.setCurrentAndTargetValue (1.0f);
     juce::ignoreUnused (sampleRate, samplesPerBlock);
 }
 
@@ -53,14 +56,26 @@ bool UtilityGainAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 void UtilityGainAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
     const bool bypass = apvts.getRawParameterValue ("BYPASS")->load() > 0.5f;
     if (bypass) return;
 
     const float gainDb = apvts.getRawParameterValue ("GAIN")->load();
     const float gain = juce::Decibels::decibelsToGain (gainDb);
+    gainSmoothed.setTargetValue (gain);
+    jassert (buffer.getNumSamples() <= (int) gainBuffer.size());
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        gainBuffer[(size_t) sample] = gainSmoothed.getNextValue();
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        buffer.applyGain (ch, 0, buffer.getNumSamples(), gain);
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            buffer.getWritePointer (ch)[sample] *= gainBuffer[(size_t) sample];
 }
 
 void UtilityGainAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

@@ -9,7 +9,11 @@ ConvolutionReverbAudioProcessorEditor::ConvolutionReverbAudioProcessorEditor (Co
     addAndMakeVisible (fileLabel);
     addAndMakeVisible (*editor);
 
+    loadButton.setLookAndFeel (&controlsLookAndFeel);
+    loadButton.setTooltip ("Load a room or space impulse response from a WAV, AIFF, or FLAC file");
+
     fileLabel.setJustificationType (juce::Justification::centredLeft);
+    fileLabel.setFont (juce::Font (juce::FontOptions (10.0f)));
     fileLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.65f));
     updateFileLabel();
 
@@ -37,7 +41,10 @@ ConvolutionReverbAudioProcessorEditor::ConvolutionReverbAudioProcessorEditor (Co
     setSize (800, 550);
 }
 
-ConvolutionReverbAudioProcessorEditor::~ConvolutionReverbAudioProcessorEditor() = default;
+ConvolutionReverbAudioProcessorEditor::~ConvolutionReverbAudioProcessorEditor()
+{
+    loadButton.setLookAndFeel (nullptr);
+}
 
 void ConvolutionReverbAudioProcessorEditor::updateFileLabel()
 {

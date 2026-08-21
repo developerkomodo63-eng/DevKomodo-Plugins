@@ -38,6 +38,10 @@ void RingModulatorAudioProcessor::prepareToPlay (double sampleRateIn, int sample
     juce::ignoreUnused (samplesPerBlock);
     sampleRate = sampleRateIn;
     carrierPhase = 0.0f;
+    frequencySmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    frequencyBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void RingModulatorAudioProcessor::releaseResources()
@@ -67,6 +71,13 @@ void RingModulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -77,11 +88,19 @@ void RingModulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
     const float freqHz = apvts.getRawParameterValue ("FREQUENCY")->load();
     const float mix    = apvts.getRawParameterValue ("MIX")->load();
-
-    const float phaseInc = freqHz / (float) sampleRate;
+    frequencySmoothed.setTargetValue (freqHz);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) frequencyBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        frequencyBuffer[(size_t) sample] = frequencySmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = frequencyBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedMix = mixBuffer[(size_t) sample];
         const float carrier = std::sin (juce::MathConstants<float>::twoPi * carrierPhase);
 
         carrierPhase += phaseInc;
@@ -93,7 +112,7 @@ void RingModulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             float* channelData = buffer.getWritePointer (channel);
             const float dry = channelData[sample];
             const float ringed = dry * carrier;
-            channelData[sample] = dry * (1.0f - mix) + ringed * mix;
+            channelData[sample] = dry * (1.0f - smoothedMix) + ringed * smoothedMix;
         }
     }
 }

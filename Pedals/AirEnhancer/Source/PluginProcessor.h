@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class AirEnhancerAudioProcessor : public juce::AudioProcessor
 {
@@ -46,6 +47,8 @@ private:
     // "dos perillas simples", no un excitador de proposito general.
     juce::dsp::StateVariableTPTFilter<float> lowBandFilter;
     juce::dsp::StateVariableTPTFilter<float> highBandFilter;
+    juce::SmoothedValue<float> lowSmoothed, highSmoothed, outputGainSmoothed;
+    std::vector<float> lowBuffer, highBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AirEnhancerAudioProcessor)
 };

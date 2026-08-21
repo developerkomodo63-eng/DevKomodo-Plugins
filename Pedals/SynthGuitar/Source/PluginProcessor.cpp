@@ -76,6 +76,12 @@ SynthGuitarAudioProcessor::~SynthGuitarAudioProcessor()
 void SynthGuitarAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
+    subLevelSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    subLevelBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     // rango de tracking para guitarra: Mi grave (~82 Hz, con margen para
     // afinaciones bajas) hasta bien arriba del diapason
@@ -134,6 +140,13 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -180,6 +193,16 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     const float gateLevel = juce::Decibels::decibelsToGain (gateDb);
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
     const float octaveMultiplier = std::pow (2.0f, (float) octave);
+    subLevelSmoothed.setTargetValue (subLevel);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) subLevelBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        subLevelBuffer[(size_t) sample] = subLevelSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // trackeamos el pitch a partir del canal 0 (el pedal es mono por naturaleza)
     const float* trackingChannel = buffer.getReadPointer (0);
@@ -205,7 +228,19 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
                 { ++pendingPitchFrames; pendingFrequency = newFreq; }
                 else
                 { pendingMidiNote = candidateMidi; pendingPitchFrames = 1; pendingFrequency = newFreq; }
-                if (pendingPitchFrames >= 2)
+                // Locking in a brand new note after only 2 consecutive hops
+                // (~12ms at this hop size) was fast enough that a pick-attack
+                // transient could win, since this check runs on whatever the
+                // tracker reports regardless of whether the envelope/gate
+                // below has actually opened yet -- i.e. it could commit a
+                // wrong pitch from noise before the string is really
+                // speaking. Requiring one more hop (~18ms total) for a brand
+                // new note, while letting an already-tracked note keep
+                // updating immediately, adds just enough debounce to reject
+                // one-off transient reads without adding audible latency to
+                // normal playing.
+                const int framesNeeded = hasTrackedPitch ? 2 : 3;
+                if (pendingPitchFrames >= framesNeeded)
                 {
                     detectedFrequency.store (pendingFrequency);
 
@@ -249,7 +284,7 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         // 70% (da ancho sin lavar la afinacion), sub escalado por su propio knob
         const float voicesSum = oscillatorMain.getNextSample()
                                + oscillatorUnison.getNextSample() * 0.7f
-                               + oscillatorSub.getNextSample() * subLevel;
+                               + oscillatorSub.getNextSample() * subLevelBuffer[(size_t) sample];
 
         const float targetSynthGate = hasTrackedPitch ? 1.0f : 0.0f;
         const float gateCoeff = targetSynthGate > synthGateState ? synthGateAttackCoeff : synthGateReleaseCoeff;
@@ -260,7 +295,9 @@ void SynthGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         {
             float* channelData = buffer.getWritePointer (channel);
             const float dry = channelData[sample];
-            channelData[sample] = (dry * (1.0f - mix) + synthSample * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry * (1.0f - smoothedMix) + synthSample * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

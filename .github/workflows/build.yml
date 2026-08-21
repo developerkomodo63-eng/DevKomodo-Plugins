@@ -1,4 +1,4 @@
-name: DevKomodo Ultimate - Windows VST3
+name: DevKomodo Ultimate - Release Builds
 
 on:
   push:
@@ -11,6 +11,10 @@ jobs:
     name: Windows x64 VST3
     runs-on: windows-2022
     timeout-minutes: 60
+    env:
+      WINDOWS_CODESIGN_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE_BASE64 }}
+      WINDOWS_CODESIGN_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE_PASSWORD }}
+      WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_CODESIGN_TIMESTAMP_URL }}
 
     steps:
       - name: Checkout repository
@@ -33,7 +37,7 @@ jobs:
       - name: Validate VST3 output
         shell: pwsh
         run: |
-          $expected = @(Get-ChildItem -Path "Pedals" -Directory | Where-Object { Test-Path (Join-Path $_.FullName "CMakeLists.txt") }).Count
+          $expected = @(Select-String -Path "CMakeLists.txt" -Pattern '^add_subdirectory\(Pedals/[^\)]+\)').Count
           $vst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Filter "*.vst3" -ErrorAction SilentlyContinue)
 
           Write-Host "Expected plugin targets: $expected"
@@ -56,6 +60,28 @@ jobs:
           }
 
           Write-Host "All VST3 bundles passed structural validation."
+
+      - name: Sign Windows VST3 binaries
+        if: ${{ env.WINDOWS_CODESIGN_CERTIFICATE_BASE64 != '' && env.WINDOWS_CODESIGN_CERTIFICATE_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "devkomodo-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_CERTIFICATE_BASE64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $signtool) { throw "signtool.exe was not found on the runner." }
+
+          $timestampArgs = @()
+          if ($env:WINDOWS_CODESIGN_TIMESTAMP_URL -ne '') {
+            $timestampArgs = @('/tr', $env:WINDOWS_CODESIGN_TIMESTAMP_URL, '/td', 'sha256')
+          }
+          Get-ChildItem -Path "build" -Recurse -File |
+            Where-Object { $_.FullName -match "\\Contents\\x86_64-win\\" } |
+            ForEach-Object {
+              & $signtool.FullName sign /fd SHA256 /f $certificatePath /p $env:WINDOWS_CODESIGN_CERTIFICATE_PASSWORD @timestampArgs $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Failed to sign $($_.FullName)" }
+            }
+          Remove-Item $certificatePath -Force
 
       - name: Collect VST3 bundles
         shell: pwsh
@@ -83,3 +109,107 @@ jobs:
           path: allvst3
           if-no-files-found: error
           compression-level: 6
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          & $iscc "installer\DevKomodo-Pedals.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevKomodo-Pedals-Windows-Installer
+          path: installer-output/*.exe
+          if-no-files-found: error
+
+  build-macos-au-vst3:
+    name: macOS universal AU and VST3
+    runs-on: macos-14
+    timeout-minutes: 90
+    env:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+      APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (universal)
+        run: >-
+          cmake -S . -B build -G Xcode
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DCMAKE_CONFIGURATION_TYPES=Release
+
+      - name: Build AU and VST3
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Validate AU and VST3 output
+        shell: bash
+        run: |
+          expected=$(grep -c '^add_subdirectory(Pedals/' CMakeLists.txt)
+          au_count=$(find build -type d -name '*.component' | wc -l | tr -d ' ')
+          vst3_count=$(find build -type d -name '*.vst3' | wc -l | tr -d ' ')
+          echo "Expected plugin targets: $expected"
+          echo "Found AU bundles: $au_count"
+          echo "Found VST3 bundles: $vst3_count"
+          test "$au_count" -eq "$expected"
+          test "$vst3_count" -eq "$expected"
+
+      - name: Sign and notarize macOS plugins
+        if: ${{ env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != '' && env.APPLE_KEYCHAIN_PASSWORD != '' && env.APPLE_DEVELOPER_ID != '' && env.APPLE_NOTARY_KEY_BASE64 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/devkomodo-signing.keychain-db"
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/DevKomodo.p12"
+          security import "$RUNNER_TEMP/DevKomodo.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$keychain"
+          find build -type d \( -name '*.component' -o -name '*.vst3' \) -print0 |
+            xargs -0 -n1 codesign --force --deep --options runtime --timestamp --sign "$APPLE_DEVELOPER_ID"
+          mkdir -p notarization/AU notarization/VST3
+          find build -type d -name '*.component' -exec cp -R {} notarization/AU/ \;
+          find build -type d -name '*.vst3' -exec cp -R {} notarization/VST3/ \;
+          ditto -c -k --keepParent notarization/AU notarization/DevKomodo-AU.zip
+          ditto -c -k --keepParent notarization/VST3 notarization/DevKomodo-VST3.zip
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool submit notarization/DevKomodo-AU.zip --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun notarytool submit notarization/DevKomodo-VST3.zip --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+
+      - name: Collect macOS plugins
+        run: |
+          mkdir -p allmacos
+          find build -type d \( -name '*.component' -o -name '*.vst3' \) -exec cp -R {} allmacos/ \;
+
+      - name: Validate universal macOS binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' binary; do
+            lipo -info "$binary" | grep -q 'arm64' || { echo "Missing arm64 in $binary"; exit 1; }
+            lipo -info "$binary" | grep -q 'x86_64' || { echo "Missing x86_64 in $binary"; exit 1; }
+          done < <(find allmacos -type f -path '*/Contents/MacOS/*' -print0)
+
+      - name: Upload macOS AU/VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevKomodo-Pedals-macOS-AU-VST3
+          path: allmacos
+          if-no-files-found: error

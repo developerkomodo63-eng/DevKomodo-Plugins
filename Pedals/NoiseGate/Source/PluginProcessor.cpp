@@ -44,6 +44,12 @@ void NoiseGateAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
 {
     juce::ignoreUnused (samplesPerBlock);
     envelopeDb = -100.0f;
+    thresholdSmoothed.reset (sampleRate, 0.02);
+    rangeSmoothed.reset (sampleRate, 0.02);
+    thresholdBuffer.assign ((size_t) samplesPerBlock, -50.0f);
+    rangeBuffer.assign ((size_t) samplesPerBlock, -80.0f);
+    thresholdSmoothed.setCurrentAndTargetValue (-50.0f);
+    rangeSmoothed.setCurrentAndTargetValue (-80.0f);
     attackCoeff  = std::exp (-1.0f / (0.001f * (float) sampleRate));
     releaseCoeff = std::exp (-1.0f / (0.100f * (float) sampleRate));
 }
@@ -75,6 +81,13 @@ void NoiseGateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -87,6 +100,14 @@ void NoiseGateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float attackMs    = apvts.getRawParameterValue ("ATTACK")->load();
     const float releaseMs   = apvts.getRawParameterValue ("RELEASE")->load();
     const float rangeDb     = apvts.getRawParameterValue ("RANGE")->load();
+    thresholdSmoothed.setTargetValue (thresholdDb);
+    rangeSmoothed.setTargetValue (rangeDb);
+    jassert (numSamples <= (int) thresholdBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        thresholdBuffer[(size_t) sample] = thresholdSmoothed.getNextValue();
+        rangeBuffer[(size_t) sample] = rangeSmoothed.getNextValue();
+    }
 
     const float sr = (float) getSampleRate();
     attackCoeff  = std::exp (-1.0f / (juce::jmax (attackMs, 0.1f)  / 1000.0f * sr));
@@ -101,8 +122,10 @@ void NoiseGateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         envelopeDb = peakDb + envCoeff * (envelopeDb - peakDb);
 
         // knee de 12dB alrededor del umbral para que no cierre de golpe
-        const float gateGainDb = juce::jlimit (rangeDb, 0.0f,
-            juce::jmap (envelopeDb, thresholdDb - 12.0f, thresholdDb, rangeDb, 0.0f));
+        const float smoothedThreshold = thresholdBuffer[(size_t) sample];
+        const float smoothedRange = rangeBuffer[(size_t) sample];
+        const float gateGainDb = juce::jlimit (smoothedRange, 0.0f,
+            juce::jmap (envelopeDb, smoothedThreshold - 12.0f, smoothedThreshold, smoothedRange, 0.0f));
 
         const float gateGain = juce::Decibels::decibelsToGain (gateGainDb);
 

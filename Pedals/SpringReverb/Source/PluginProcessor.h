@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <array>
 
 class SpringReverbAudioProcessor : public juce::AudioProcessor

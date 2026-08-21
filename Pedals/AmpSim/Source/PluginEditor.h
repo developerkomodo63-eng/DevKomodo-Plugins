@@ -20,6 +20,8 @@ private:
     juce::Label cabFileLabel;
     std::unique_ptr<DevKomodoUniversalEditor> editor;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    DevKomodoKnobLookAndFeel controlsLookAndFeel { juce::Colour::fromRGB (255, 138, 61) };
+    juce::TooltipWindow tooltipWindow { this, 650 };
     bool lastBassMode = false;
 
     void updateCabLabel();

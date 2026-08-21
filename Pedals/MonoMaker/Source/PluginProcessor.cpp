@@ -66,6 +66,13 @@ void MonoMakerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     if (getTotalNumInputChannels() < 2 || getTotalNumOutputChannels() < 2)
         return;

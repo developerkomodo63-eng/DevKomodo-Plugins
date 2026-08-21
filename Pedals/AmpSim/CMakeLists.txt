@@ -7,7 +7,7 @@ juce_add_plugin(AmpSim
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Amp1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "AmpSim")
 
 target_sources(AmpSim

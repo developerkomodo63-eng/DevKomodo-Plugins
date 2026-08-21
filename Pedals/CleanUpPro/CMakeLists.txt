@@ -7,7 +7,7 @@ juce_add_plugin(CleanUpPro
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 ClpP
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "CleanUp Pro")
 
 target_sources(CleanUpPro

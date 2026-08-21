@@ -28,6 +28,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout DistortionGuitarAudioProcess
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "LEVEL", 1 }, "Level", -24.0f, 6.0f, -4.0f));
 
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { "HQ", 1 }, "HQ", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -73,6 +76,17 @@ void DistortionGuitarAudioProcessor::prepareToPlay (double sampleRate, int sampl
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
 
     dryBuffer.setSize ((int) spec.numChannels, samplesPerBlock);
+    driveSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    driveBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    driveSmoothed.setCurrentAndTargetValue (1.0f);
+    mixSmoothed.setCurrentAndTargetValue (1.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
+    oversampling.initProcessing ((size_t) samplesPerBlock);
+    oversampling.reset();
 }
 
 void DistortionGuitarAudioProcessor::releaseResources()
@@ -124,6 +138,13 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -144,6 +165,11 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
     const float mix        = apvts.getRawParameterValue("MIX")->load();
     const float levelDb    = apvts.getRawParameterValue("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain(levelDb);
+    const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
+
+    driveSmoothed.setTargetValue (drive);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
 
     lpFilter.setCutoffFrequency(toneCutoff);
 
@@ -156,6 +182,13 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
         *f.coefficients = scoopCoeffs;
 
     const int numSamples = buffer.getNumSamples();
+    jassert (numSamples <= (int) driveBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        driveBuffer[(size_t) sample] = driveSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     hpFilter.setCutoffFrequency (bassMode ? 25.0f : 100.0f);
 
@@ -169,14 +202,26 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    // Single-rate hard-knee distortion by design: lightweight, zero added
-    // latency and intentionally different from the softer Overdrive curve.
+    juce::dsp::AudioBlock<float> audioBlock (buffer);
+    auto processingBlock = audioBlock;
+    if (hq)
+        processingBlock = oversampling.processSamplesUp (processingBlock);
+    const int processingSamples = (int) processingBlock.getNumSamples();
+
+    // HQ applies oversampling only around the nonlinear stage; filters and
+    // dry/wet mixing remain at the host sample rate.
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < numSamples; ++sample)
-            data[sample] = processDistortionSample (data[sample] * drive, bias);
+        float* data = processingBlock.getChannelPointer ((size_t) channel);
+        for (int sample = 0; sample < processingSamples; ++sample)
+        {
+            const int sourceSample = juce::jmin (numSamples - 1, sample / (hq ? 4 : 1));
+            data[sample] = processDistortionSample (data[sample] * driveBuffer[(size_t) sourceSample], bias);
+        }
     }
+
+    if (hq)
+        oversampling.processSamplesDown (audioBlock);
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -195,7 +240,9 @@ void DistortionGuitarAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
             x1 = x0;
             y1 = y0;
 
-            channelData[sample] = (dry[sample] * (1.0f - mix) + y0 * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry[sample] * (1.0f - smoothedMix) + y0 * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

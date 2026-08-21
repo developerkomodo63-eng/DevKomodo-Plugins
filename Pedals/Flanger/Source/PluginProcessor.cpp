@@ -56,6 +56,16 @@ void FlangerAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBl
 
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    rateSmoothed.reset (sampleRate, 0.02);
+    depthSmoothed.reset (sampleRate, 0.02);
+    manualSmoothed.reset (sampleRate, 0.02);
+    feedbackSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    rateBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    depthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    manualBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    feedbackBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void FlangerAudioProcessor::releaseResources()
@@ -85,6 +95,13 @@ void FlangerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -104,17 +121,36 @@ void FlangerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const float feedback = apvts.getRawParameterValue ("FEEDBACK")->load();
     const float mix      = apvts.getRawParameterValue ("MIX")->load();
 
-    const float phaseInc = rateHz / (float) sampleRate;
+    rateSmoothed.setTargetValue (rateHz);
+    depthSmoothed.setTargetValue (depth);
+    manualSmoothed.setTargetValue (manualMs);
+    feedbackSmoothed.setTargetValue (feedback);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) rateBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();
+        depthBuffer[(size_t) sample] = depthSmoothed.getNextValue();
+        manualBuffer[(size_t) sample] = manualSmoothed.getNextValue();
+        feedbackBuffer[(size_t) sample] = feedbackSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
+
     constexpr float maxModMs = 4.0f;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = rateBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedDepth = depthBuffer[(size_t) sample];
+        const float smoothedManual = manualBuffer[(size_t) sample];
+        const float smoothedFeedback = feedbackBuffer[(size_t) sample];
+        const float smoothedMix = mixBuffer[(size_t) sample];
         lfoPhase += phaseInc;
         if (lfoPhase >= 1.0f)
             lfoPhase -= 1.0f;
 
-        const float modMs = depth * maxModMs * 0.5f * (1.0f + std::sin (juce::MathConstants<float>::twoPi * lfoPhase));
-        const float delayMs = juce::jmax (0.1f, manualMs + modMs);
+        const float modMs = smoothedDepth * maxModMs * 0.5f * (1.0f + std::sin (juce::MathConstants<float>::twoPi * lfoPhase));
+        const float delayMs = juce::jmax (0.1f, smoothedManual + modMs);
         const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
@@ -135,10 +171,10 @@ void FlangerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             const float wet = line[(size_t) readIdx0] * (1.0f - frac) + line[(size_t) readIdx1] * frac;
             const float input = channelData[sample];
 
-            line[(size_t) wp] = input + wet * feedback;
+            line[(size_t) wp] = input + wet * smoothedFeedback;
             wp = (wp + 1) % lineLength;
 
-            channelData[sample] = input * (1.0f - mix) + wet * mix;
+            channelData[sample] = input * (1.0f - smoothedMix) + wet * smoothedMix;
         }
     }
 }

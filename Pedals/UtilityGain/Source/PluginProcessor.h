@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class UtilityGainAudioProcessor  : public juce::AudioProcessor
 {
@@ -37,5 +38,7 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 
 private:
+    juce::SmoothedValue<float> gainSmoothed;
+    std::vector<float> gainBuffer;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UtilityGainAudioProcessor)
 };

@@ -56,6 +56,12 @@ void PreampAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     dcR = 1.0f - (2.0f * juce::MathConstants<float>::pi * 20.0f / (float) sampleRate);
 
     dryBuffer.setSize (numChannels, samplesPerBlock);
+    driveSmoothed.reset (sampleRate, 0.02);
+    blendSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    driveBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    blendBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void PreampAudioProcessor::releaseResources()
@@ -85,6 +91,13 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -100,6 +113,16 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float blend   = apvts.getRawParameterValue ("BLEND")->load();
     const float levelDb = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    driveSmoothed.setTargetValue (drive);
+    blendSmoothed.setTargetValue (blend);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) driveBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        driveBuffer[(size_t) sample] = driveSmoothed.getNextValue();
+        blendBuffer[(size_t) sample] = blendSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     auto bassCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (
         currentSampleRate, 100.0f, 0.7f, juce::Decibels::decibelsToGain (bassDb));
@@ -126,7 +149,7 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             // Preamp is a two-stage, low-gain tube-like circuit: gentle first
             // stage, asymmetric second stage, then tone stack. It stays at
             // native rate and intentionally never behaves like hard distortion.
-            const float driven = channelData[sample] * drive;
+            const float driven = channelData[sample] * driveBuffer[(size_t) sample];
             const float stage1 = fast_tanh (driven * 0.72f);
             const float biased = stage1 * 1.25f + 0.055f * stage1 * stage1;
             const float rawSaturated = fast_tanh (biased * 0.92f);
@@ -139,7 +162,9 @@ void PreampAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             float shaped = t.bass.processSample (saturated);
             shaped = t.treble.processSample (shaped);
 
-            channelData[sample] = (dry[sample] * (1.0f - blend) + shaped * blend) * outputGain;
+            const float smoothedBlend = blendBuffer[(size_t) sample];
+            channelData[sample] = (dry[sample] * (1.0f - smoothedBlend) + shaped * smoothedBlend)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

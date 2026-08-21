@@ -59,6 +59,14 @@ void TapeDelayAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPer
     const int lineLength = (int) (maxDelaySeconds * sampleRate) + 4;
     lines.assign ((size_t) numChannels, std::vector<float> ((size_t) lineLength, 0.0f));
     writePos.assign ((size_t) numChannels, 0);
+    delaySmoothed.reset (sampleRate, 0.02);
+    feedbackSmoothed.reset (sampleRate, 0.02);
+    saturationSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    delayBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    feedbackBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    saturationBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     toneFilterL.reset();
     toneFilterR.reset();
@@ -96,6 +104,13 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -115,6 +130,19 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float saturation = apvts.getRawParameterValue ("SATURATION")->load();
     const float toneHz     = apvts.getRawParameterValue ("TONE")->load();
     const float mix        = apvts.getRawParameterValue ("MIX")->load();
+    const float delaySamplesTarget = (timeMs / 1000.0f) * (float) sampleRate;
+    delaySmoothed.setTargetValue (delaySamplesTarget);
+    feedbackSmoothed.setTargetValue (feedback);
+    saturationSmoothed.setTargetValue (saturation);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) delayBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        delayBuffer[(size_t) sample] = delaySmoothed.getNextValue();
+        feedbackBuffer[(size_t) sample] = feedbackSmoothed.getNextValue();
+        saturationBuffer[(size_t) sample] = saturationSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
     auto toneCoeffs = juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass (sampleRate, toneHz);
     *toneFilterL.coefficients = toneCoeffs;
@@ -134,7 +162,7 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
         const float wobbleMs = wowFlutter * (wowMaxMs * std::sin (juce::MathConstants<float>::twoPi * wowPhase)
                                             + flutterMaxMs * std::sin (juce::MathConstants<float>::twoPi * flutterPhase));
-        const float delayMs = juce::jmax (5.0f, timeMs + wobbleMs);
+        const float delayMs = juce::jmax (5.0f, delayBuffer[(size_t) sample] / (float) sampleRate * 1000.0f + wobbleMs);
         const float delaySamples = delayMs / 1000.0f * (float) sampleRate;
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
@@ -158,13 +186,16 @@ void TapeDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             // solo lo que vuelve al buffer se satura y se oscurece -- por
             // eso cada repeticion sucesiva se degrada un poco mas
             float feedbackSignal = toneFilter.processSample (delayedSample);
-            feedbackSignal = feedbackSignal * (1.0f - saturation) + tapeSaturate (feedbackSignal) * saturation;
+            const float smoothedSaturation = saturationBuffer[(size_t) sample];
+            feedbackSignal = feedbackSignal * (1.0f - smoothedSaturation)
+                           + tapeSaturate (feedbackSignal) * smoothedSaturation;
 
             const float input = channelData[sample];
-            line[(size_t) wp] = input + feedbackSignal * feedback;
+            line[(size_t) wp] = input + feedbackSignal * feedbackBuffer[(size_t) sample];
             wp = (wp + 1) % lineLength;
 
-            channelData[sample] = input * (1.0f - mix) + delayedSample * mix;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = input * (1.0f - smoothedMix) + delayedSample * smoothedMix;
         }
     }
 }

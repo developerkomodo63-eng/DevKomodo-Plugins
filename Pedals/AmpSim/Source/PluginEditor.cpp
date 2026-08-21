@@ -10,7 +10,13 @@ AmpSimAudioProcessorEditor::AmpSimAudioProcessorEditor (AmpSimAudioProcessor& p)
     addAndMakeVisible (cabFileLabel);
     addAndMakeVisible (*editor);
 
+    loadCabButton.setLookAndFeel (&controlsLookAndFeel);
+    clearCabButton.setLookAndFeel (&controlsLookAndFeel);
+    loadCabButton.setTooltip ("Load a cabinet impulse response from a WAV, AIFF, or FLAC file");
+    clearCabButton.setTooltip ("Remove the external cabinet IR and return to the built-in cabinet model");
+
     cabFileLabel.setJustificationType (juce::Justification::centredLeft);
+    cabFileLabel.setFont (juce::Font (juce::FontOptions (10.0f)));
     cabFileLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.65f));
     updateCabLabel();
 
@@ -51,6 +57,8 @@ AmpSimAudioProcessorEditor::AmpSimAudioProcessorEditor (AmpSimAudioProcessor& p)
 AmpSimAudioProcessorEditor::~AmpSimAudioProcessorEditor()
 {
     stopTimer();
+    loadCabButton.setLookAndFeel (nullptr);
+    clearCabButton.setLookAndFeel (nullptr);
 }
 
 void AmpSimAudioProcessorEditor::timerCallback()

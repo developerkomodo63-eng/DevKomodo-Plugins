@@ -77,6 +77,9 @@ void EQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     bands.resize ((size_t) numChannels);
     for (auto& b : bands)
         b.reset();
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
 }
 
 void EQAudioProcessor::releaseResources()
@@ -106,6 +109,13 @@ void EQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -116,6 +126,10 @@ void EQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     const float levelDb = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) outputGainBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
 
     std::array<std::array<float, 6>, numBands> coeffs;
 
@@ -157,7 +171,7 @@ void EQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             float y = channelData[sample];
             for (int i = 0; i < numBands; ++i)
                 y = b.filters[(size_t) i].processSample (y);
-            channelData[sample] = y * outputGain;
+            channelData[sample] = y * outputGainBuffer[(size_t) sample];
         }
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class ExciterAudioProcessor : public juce::AudioProcessor
 {
@@ -43,6 +44,8 @@ private:
     // y la suma EN PARALELO con la señal original (nunca reemplaza el
     // agudo real, solo le agrega encima)
     juce::dsp::StateVariableTPTFilter<float> hpFilter;
+    juce::SmoothedValue<float> amountSmoothed, mixSmoothed, outputGainSmoothed;
+    std::vector<float> amountBuffer, mixBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ExciterAudioProcessor)
 };

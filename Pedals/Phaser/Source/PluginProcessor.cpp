@@ -55,6 +55,14 @@ void PhaserAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBlo
     juce::ignoreUnused (samplesPerBlock);
     sampleRate = sampleRateIn;
     lfoPhase = 0.0f;
+    rateSmoothed.reset (sampleRate, 0.02);
+    depthSmoothed.reset (sampleRate, 0.02);
+    feedbackSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    rateBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    depthBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    feedbackBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     for (auto& channelStages : stages)
         for (auto& stage : channelStages)
@@ -90,6 +98,13 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -115,9 +130,20 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float mixBase     = apvts.getRawParameterValue ("MIX")->load();
     const float mix        = bassMode ? juce::jmin (mixBase, 0.6f) : mixBase;
 
-    const int numStages = 2 * (stagesChoice + 1); // choice 0..3 -> 2,4,6,8
+    rateSmoothed.setTargetValue (rateHz);
+    depthSmoothed.setTargetValue (depth);
+    feedbackSmoothed.setTargetValue (feedback);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) rateBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();
+        depthBuffer[(size_t) sample] = depthSmoothed.getNextValue();
+        feedbackBuffer[(size_t) sample] = feedbackSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
-    const float phaseInc = rateHz / (float) sampleRate;
+    const int numStages = 2 * (stagesChoice + 1); // choice 0..3 -> 2,4,6,8
 
     // barrido logaritmico entre ~200Hz y ~2kHz, controlado por el LFO y
     // escalado por Depth (a menos depth, el barrido es mas angosto)
@@ -130,8 +156,12 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float phaseInc = rateBuffer[(size_t) sample] / (float) sampleRate;
+        const float smoothedDepth = depthBuffer[(size_t) sample];
+        const float smoothedFeedback = feedbackBuffer[(size_t) sample];
+        const float smoothedMix = mixBuffer[(size_t) sample];
         const float lfoUnipolar = 0.5f * (1.0f + std::sin (juce::MathConstants<float>::twoPi * lfoPhase));
-        const float depthed = 0.5f - 0.5f * depth + depth * lfoUnipolar; // rango se achica con menos depth
+        const float depthed = 0.5f - 0.5f * smoothedDepth + smoothedDepth * lfoUnipolar; // rango se achica con menos depth
         const float freqHz = std::exp (logMin + (logMax - logMin) * depthed);
 
         const float tanArg = juce::MathConstants<float>::pi * freqHz / (float) sampleRate;
@@ -148,14 +178,14 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             const float dry = channelData[sample];
 
             const int stateChannel = juce::jmin (channel, channelsToProcess - 1);
-            float chainInput = dry + feedbackState[(size_t) stateChannel] * feedback;
+            float chainInput = dry + feedbackState[(size_t) stateChannel] * smoothedFeedback;
 
             for (int s = 0; s < numStages; ++s)
                 chainInput = processAllpass (stages[(size_t) stateChannel][(size_t) s], chainInput, coeffA);
 
             feedbackState[(size_t) stateChannel] = chainInput;
 
-            channelData[sample] = dry * (1.0f - mix) + chainInput * mix;
+            channelData[sample] = dry * (1.0f - smoothedMix) + chainInput * smoothedMix;
         }
     }
 }

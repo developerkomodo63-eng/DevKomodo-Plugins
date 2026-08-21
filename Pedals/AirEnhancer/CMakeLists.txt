@@ -7,7 +7,7 @@ juce_add_plugin(AirEnhancer
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Air1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Air Enhancer")
 
 target_sources(AirEnhancer

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class FuzzGuitarAudioProcessor : public juce::AudioProcessor
 {
@@ -44,6 +45,12 @@ private:
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
     juce::AudioBuffer<float> dryBuffer;
+    juce::SmoothedValue<float> driveSmoothed;
+    juce::SmoothedValue<float> mixSmoothed;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> driveBuffer, mixBuffer, outputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
 
     float processFuzzSample (float x, float hardness, float bias) noexcept;
 

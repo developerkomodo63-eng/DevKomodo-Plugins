@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class FlangerAudioProcessor : public juce::AudioProcessor
 {
@@ -48,6 +49,9 @@ private:
 
     double sampleRate = 44100.0;
     float lfoPhase = 0.0f;
+    juce::SmoothedValue<float> rateSmoothed, depthSmoothed, manualSmoothed;
+    juce::SmoothedValue<float> feedbackSmoothed, mixSmoothed;
+    std::vector<float> rateBuffer, depthBuffer, manualBuffer, feedbackBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FlangerAudioProcessor)
 };

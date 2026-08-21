@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/ParameterTooltips.h"
+#include "../../Common/PresetProfiles.h"
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -104,7 +106,7 @@ public:
                               juce::AudioProcessorValueTreeState& state,
                               juce::String productName,
                               juce::Colour accentColour = juce::Colour::fromRGB (111, 218, 175))
-        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour), knobLookAndFeel (accentColour)
+        : AudioProcessorEditor (&processor), processorRef (processor), apvts (state), name (std::move (productName)), accent (accentColour), knobLookAndFeel (accentColour), tooltipWindow (this, 650)
     {
         setOpaque (true);
         setResizable (true, true);
@@ -120,7 +122,11 @@ public:
                                   || name.toUpperCase().contains ("TONE SCULPTOR")
                                   || name.toUpperCase().contains ("AMPSIM")
                                   || name.toUpperCase().contains ("CONVOLUTION REVERB");
+#if defined (DEVKOMODO_DEMO_BUILD)
+        brand.setText ("DEVKOMODO  •  DEMO  •  15 MIN", juce::dontSendNotification);
+#else
         brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
+#endif
         brand.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold)));
         // Blend the accent with white (rather than using the raw accent at
         // partial alpha) so the brand text stays clearly legible even for
@@ -142,6 +148,7 @@ public:
                 applyPreset (factoryPresets[(size_t) id - 2]);
         };
         presetBox.setTooltip ("Select a factory preset or MANUAL");
+        presetBox.setLookAndFeel (&knobLookAndFeel);
         addAndMakeVisible (presetBox);
 
         if (apvts.getParameter ("INSTRUMENT") != nullptr)
@@ -189,7 +196,7 @@ public:
 
                 c.box = std::make_unique<juce::ComboBox>();
                 c.box->addItemList (choice->choices, 1);
-                c.box->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                c.box->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 c.box->setLookAndFeel (&knobLookAndFeel);
                 c.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
                     (apvts, id, *c.box);
@@ -203,7 +210,7 @@ public:
             {
                 Toggle t;
                 t.button = std::make_unique<juce::ToggleButton> (ranged->name);
-                t.button->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                t.button->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 t.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>
                     (apvts, id, *t.button);
                 addAndMakeVisible (*t.button);
@@ -225,7 +232,7 @@ public:
                 k.slider->setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB (14, 16, 20));
                 k.slider->setColour (juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB (55, 60, 70));
                 k.slider->setColour (juce::Slider::textBoxHighlightColourId, accent.withAlpha (0.25f));
-                k.slider->setTooltip (ranged->name.isNotEmpty() ? ranged->name : prettifyID (id));
+                k.slider->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 const auto upperID = id.toUpperCase();
                 const bool showPercent = (upperID == "MIX" || upperID == "DEPTH" || upperID == "WIDTH"
                                        || upperID == "WET" || upperID == "FEEDBACK" || upperID == "AMOUNT"
@@ -307,6 +314,7 @@ public:
             if (k.slider != nullptr) k.slider->setLookAndFeel (nullptr);
         for (auto& c : choices)
             if (c.box != nullptr) c.box->setLookAndFeel (nullptr);
+        presetBox.setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -381,6 +389,9 @@ public:
         bounds.removeFromTop (12);
         auto footer = bounds.removeFromBottom (30);
         bounds.removeFromBottom (8);
+
+        auto presetInfo = footer.removeFromLeft (juce::jmin (300, footer.getWidth() / 2));
+        presetDescription.setBounds (presetInfo.reduced (3, 2));
 
         std::vector<juce::Component*> controls;
         std::vector<juce::Component*> labels;
@@ -513,6 +524,25 @@ private:
     }
 
 
+    static juce::String describePreset (const juce::String& presetName)
+    {
+        const auto preset = presetName.toUpperCase();
+        if (preset == "MANUAL") return "MANUAL - edit the controls freely";
+        if (preset == "INIT") return "INIT - neutral starting point";
+        if (preset == "CLEAN") return "CLEAN - controlled dynamics and subtle colour";
+        if (preset == "PUNCH") return "PUNCH - tighter attack and forward mids";
+        if (preset == "WIDE") return "WIDE - broader movement and space";
+        if (preset == "EXTREME") return "EXTREME - maximum character and intensity";
+        if (preset == "CRUNCH") return "CRUNCH - responsive edge-of-breakup drive";
+        if (preset == "RHYTHM") return "RHYTHM - focused, mix-ready rhythm tone";
+        if (preset == "LEAD") return "LEAD - sustain and upper-mid presence";
+        if (preset == "HEAVY") return "HEAVY - dense high-gain character";
+        if (preset == "ROOM") return "ROOM - short, natural ambience";
+        if (preset == "PLATE") return "PLATE - bright, smooth sustain";
+        if (preset == "HALL") return "HALL - spacious decay for open parts";
+        if (preset == "ARENA") return "ARENA - long, dramatic space";
+        return presetName + " - factory starting point";
+    }
     juce::AudioProcessorParameter* findParameterById (const juce::String& id) const
     {
         for (auto* parameter : processorRef.getParameters())
@@ -775,6 +805,9 @@ private:
                     setPresetValue ("BAND" + juce::String (b), v[b]);
             }
 
+            for (const auto& [id, value] : devkomodo::curatedPresetValues (category, presetIndex))
+                setPresetValue (id, value);
+
             result.push_back (std::move (p));
         }
         return result;
@@ -792,10 +825,11 @@ private:
     juce::String name;
     juce::Colour accent;
 
-    juce::Label title, brand;
+    juce::Label title, brand, presetDescription;
     juce::ComboBox presetBox;
     juce::TextButton instrumentButton;
     DevKomodoKnobLookAndFeel knobLookAndFeel;
+    juce::TooltipWindow tooltipWindow;
     std::vector<Knob> knobs;
     std::vector<Choice> choices;
     std::vector<Toggle> toggles;

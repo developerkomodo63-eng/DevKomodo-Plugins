@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class TapeDelayAudioProcessor : public juce::AudioProcessor
 {
@@ -51,6 +52,8 @@ private:
 
     double sampleRate = 44100.0;
     float wowPhase = 0.0f, flutterPhase = 0.0f;
+    juce::SmoothedValue<float> delaySmoothed, feedbackSmoothed, saturationSmoothed, mixSmoothed;
+    std::vector<float> delayBuffer, feedbackBuffer, saturationBuffer, mixBuffer;
 
     static float tapeSaturate (float x) noexcept;
 

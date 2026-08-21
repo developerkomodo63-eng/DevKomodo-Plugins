@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <vector>
 
 class CleanUpProAudioProcessor  : public juce::AudioProcessor

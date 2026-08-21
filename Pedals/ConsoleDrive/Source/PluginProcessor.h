@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <vector>
 
 class ConsoleDriveAudioProcessor  : public juce::AudioProcessor
@@ -40,5 +41,7 @@ public:
 private:
     double sampleRate = 44100.0;
     std::vector<float> lowState;
+    juce::SmoothedValue<float> driveSmoothed, mixSmoothed, gainSmoothed;
+    std::vector<float> driveBuffer, mixBuffer, gainBuffer;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConsoleDriveAudioProcessor)
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class TransientShaperAudioProcessor : public juce::AudioProcessor
 {
@@ -45,6 +46,8 @@ private:
     float fastEnvelope = 0.0f, slowEnvelope = 0.0f;
     float fastAttackCoeff = 0.0f, fastReleaseCoeff = 0.0f;
     float slowAttackCoeff = 0.0f, slowReleaseCoeff = 0.0f;
+    juce::SmoothedValue<float> attackSmoothed, sustainSmoothed, sensitivitySmoothed, mixSmoothed;
+    std::vector<float> attackBuffer, sustainBuffer, sensitivityBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransientShaperAudioProcessor)
 };

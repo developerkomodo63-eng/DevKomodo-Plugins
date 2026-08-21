@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <array>
 
 class EQAudioProcessor : public juce::AudioProcessor
@@ -51,6 +52,8 @@ private:
     std::vector<ChannelBands> bands;
 
     double currentSampleRate = 44100.0;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EQAudioProcessor)
 };

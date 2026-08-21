@@ -38,6 +38,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpSimAudioProcessor::create
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "LEVEL", 1 }, "Level", 0.0f, 10.0f, 6.0f));
 
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { "HQ", 1 }, "HQ", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -79,8 +82,16 @@ void AmpSimAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
 
     dcBlockerX1.assign ((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign ((size_t) spec.numChannels, 0.0f);
+    gainSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    gainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    gainSmoothed.setCurrentAndTargetValue (1.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
 
     cabConvolution.prepare (spec);
+    oversampling.initProcessing ((size_t) samplesPerBlock);
+    oversampling.reset();
 
     if (pendingCabLoadOnRestore != juce::File())
     {
@@ -158,6 +169,13 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -183,6 +201,15 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const float levelKnob = apvts.getRawParameterValue ("LEVEL")->load();
     const float levelDb   = juce::jmap (levelKnob, 0.0f, 10.0f, -24.0f, 6.0f);
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
+    gainSmoothed.setTargetValue (gain);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) gainBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        gainBuffer[(size_t) sample] = gainSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // cada voz cambia el bias y la "dureza" de las dos etapas en cascada,
     // y cuanto empuja el pre-gain interno antes de llegar a ellas -- eso
@@ -265,18 +292,28 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
     }
 
-    // Native-rate amp stages keep CPU and latency low. The cab/tone stack
-    // after the nonlinear stages also limits excessive high-frequency energy.
+    juce::dsp::AudioBlock<float> audioBlock (buffer);
+    auto processingBlock = audioBlock;
+    if (hq)
+        processingBlock = oversampling.processSamplesUp (processingBlock);
+    const int processingSamples = (int) processingBlock.getNumSamples();
+
+    // HQ wraps only the two nonlinear amp stages; the cab and tone stack
+    // remain at the host sample rate.
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        float* data = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < numSamples; ++sample)
+        float* data = processingBlock.getChannelPointer ((size_t) channel);
+        for (int sample = 0; sample < processingSamples; ++sample)
         {
-            const float driven = data[sample] * gain * voice.preGain;
+            const int sourceSample = juce::jmin (numSamples - 1, sample / (hq ? 4 : 1));
+            const float driven = data[sample] * gainBuffer[(size_t) sourceSample] * voice.preGain;
             const float stage1 = preampStage (driven, voice.bias);
             data[sample] = powerAmpStage (stage1 * 2.0f, voice.hardness);
         }
     }
+
+    if (hq)
+        oversampling.processSamplesDown (audioBlock);
 
     // gabinete: si hay un IR cargado, usamos convolucion real; si no, el
     // filtro algoritmico de siempre
@@ -312,7 +349,7 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             x1 = x0;
             y1 = y0;
 
-            channelData[sample] = y0 * outputGain;
+            channelData[sample] = y0 * outputGainBuffer[(size_t) sample];
         }
     }
 }

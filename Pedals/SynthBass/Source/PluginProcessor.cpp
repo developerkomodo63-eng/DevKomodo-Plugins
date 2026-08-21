@@ -76,6 +76,12 @@ SynthBassAudioProcessor::~SynthBassAudioProcessor()
 void SynthBassAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
+    subLevelSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    subLevelBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 
     // rango de tracking para bajo: hasta el Mi grave de 5 cuerdas (~31 Hz),
     // ventana mas grande porque las frecuencias bajas necesitan mas
@@ -135,6 +141,13 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -181,6 +194,16 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float gateLevel = juce::Decibels::decibelsToGain (gateDb);
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
     const float octaveMultiplier = std::pow (2.0f, (float) octave);
+    subLevelSmoothed.setTargetValue (subLevel);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) subLevelBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        subLevelBuffer[(size_t) sample] = subLevelSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // trackeamos el pitch a partir del canal 0 (el pedal es mono por naturaleza)
     const float* trackingChannel = buffer.getReadPointer (0);
@@ -206,7 +229,13 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                 { ++pendingPitchFrames; pendingFrequency = newFreq; }
                 else
                 { pendingMidiNote = candidateMidi; pendingPitchFrames = 1; pendingFrequency = newFreq; }
-                if (pendingPitchFrames >= 2)
+                // Same debounce fix as SynthGuitar: 2 hops (~12ms) was fast
+                // enough for a pick/finger attack transient to lock in a
+                // wrong note before the string was really speaking. One
+                // extra hop for a brand-new lock; continuing an already-
+                // tracked note stays just as fast as before.
+                const int framesNeeded = hasTrackedPitch ? 2 : 3;
+                if (pendingPitchFrames >= framesNeeded)
                 {
                     detectedFrequency.store (pendingFrequency);
 
@@ -250,7 +279,7 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         // 70% (da ancho sin lavar la afinacion), sub escalado por su propio knob
         const float voicesSum = oscillatorMain.getNextSample()
                                + oscillatorUnison.getNextSample() * 0.7f
-                               + oscillatorSub.getNextSample() * subLevel;
+                               + oscillatorSub.getNextSample() * subLevelBuffer[(size_t) sample];
 
         const float targetSynthGate = hasTrackedPitch ? 1.0f : 0.0f;
         const float gateCoeff = targetSynthGate > synthGateState ? synthGateAttackCoeff : synthGateReleaseCoeff;
@@ -261,7 +290,9 @@ void SynthBassAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         {
             float* channelData = buffer.getWritePointer (channel);
             const float dry = channelData[sample];
-            channelData[sample] = (dry * (1.0f - mix) + synthSample * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry * (1.0f - smoothedMix) + synthSample * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

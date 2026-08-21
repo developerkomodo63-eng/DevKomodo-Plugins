@@ -1,0 +1,23 @@
+Copyright (c) 2026 DevKomodo. All rights reserved.
+
+This is a placeholder license file. Before selling this software, replace
+this file with an actual End User License Agreement (EULA) covering at
+minimum:
+
+  - Grant of license (per-seat / per-machine, number of activations allowed)
+  - What the buyer is and isn't allowed to do (redistribute, reverse
+    engineer, resell, use in commercial productions, etc.)
+  - Warranty disclaimer / limitation of liability
+  - Refund policy
+  - Your jurisdiction's consumer protection requirements, if selling to
+    consumers in the EU/UK/California etc. (these often have mandatory
+    disclosure terms)
+
+This is not legal advice, and none of the above was drafted or reviewed by
+a lawyer. A boilerplate EULA template (e.g. from a plugin-industry peer, a
+legal-templates service, or a lawyer) adapted for DevKomodo is strongly
+recommended before public sale.
+
+Separately: this project links against JUCE (https://juce.com). Confirm
+your JUCE license tier permits commercial distribution of the built
+plugins before shipping v1.0 -- see the note in README.md.

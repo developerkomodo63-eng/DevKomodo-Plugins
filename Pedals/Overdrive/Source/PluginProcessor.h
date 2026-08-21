@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class OverdriveAudioProcessor  : public juce::AudioProcessor
 {
@@ -43,6 +44,13 @@ private:
 
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;
+
+    juce::SmoothedValue<float> driveSmoothed;
+    juce::SmoothedValue<float> outputGainSmoothed;
+    std::vector<float> smoothedDriveBuffer;
+    std::vector<float> smoothedOutputGainBuffer;
+    juce::dsp::Oversampling<float> oversampling { 2, 2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true };
 
     float processSaturationSample (float x, float character) noexcept;
 

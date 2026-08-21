@@ -56,6 +56,13 @@ bool LimiterAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 void LimiterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
     const int numCh = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const int numSamples = buffer.getNumSamples();
 

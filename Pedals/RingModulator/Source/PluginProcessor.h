@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class RingModulatorAudioProcessor : public juce::AudioProcessor
 {
@@ -40,6 +41,8 @@ public:
 private:
     double sampleRate = 44100.0;
     float carrierPhase = 0.0f;
+    juce::SmoothedValue<float> frequencySmoothed, mixSmoothed;
+    std::vector<float> frequencyBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RingModulatorAudioProcessor)
 };

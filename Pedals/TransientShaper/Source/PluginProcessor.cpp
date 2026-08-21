@@ -40,9 +40,19 @@ TransientShaperAudioProcessor::~TransientShaperAudioProcessor()
 
 void TransientShaperAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
-
     fastEnvelope = slowEnvelope = 0.0f;
+    attackSmoothed.reset (sampleRate, 0.02);
+    sustainSmoothed.reset (sampleRate, 0.02);
+    sensitivitySmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    attackBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    sustainBuffer.assign ((size_t) samplesPerBlock, 0.0f);
+    sensitivityBuffer.assign ((size_t) samplesPerBlock, 2.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    attackSmoothed.setCurrentAndTargetValue (0.0f);
+    sustainSmoothed.setCurrentAndTargetValue (0.0f);
+    sensitivitySmoothed.setCurrentAndTargetValue (2.0f);
+    mixSmoothed.setCurrentAndTargetValue (1.0f);
 
     fastAttackCoeff  = std::exp (-1.0f / (0.0005f * (float) sampleRate));
     fastReleaseCoeff = std::exp (-1.0f / (0.050f  * (float) sampleRate));
@@ -77,6 +87,13 @@ void TransientShaperAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -89,6 +106,18 @@ void TransientShaperAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     const float sustainDb  = apvts.getRawParameterValue ("SUSTAIN")->load();
     const float sensitivity= apvts.getRawParameterValue ("SENSITIVITY")->load();
     const float mix        = apvts.getRawParameterValue ("MIX")->load();
+    attackSmoothed.setTargetValue (attackDb);
+    sustainSmoothed.setTargetValue (sustainDb);
+    sensitivitySmoothed.setTargetValue (sensitivity);
+    mixSmoothed.setTargetValue (mix);
+    jassert (numSamples <= (int) attackBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        attackBuffer[(size_t) sample] = attackSmoothed.getNextValue();
+        sustainBuffer[(size_t) sample] = sustainSmoothed.getNextValue();
+        sensitivityBuffer[(size_t) sample] = sensitivitySmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+    }
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -102,12 +131,14 @@ void TransientShaperAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
 
         // diferencia entre envolventes: positiva justo cuando pega un
         // transitorio (la rapida todavia no la alcanzo la lenta)
-        const float detector = std::tanh ((fastEnvelope - slowEnvelope) * sensitivity * 20.0f);
+        const float detector = std::tanh ((fastEnvelope - slowEnvelope) * sensitivityBuffer[(size_t) sample] * 20.0f);
         const float attackWeight = 0.5f * (1.0f + detector); // 1 = transitorio, 0 = sustain
 
-        const float gainDb = attackWeight * attackDb + (1.0f - attackWeight) * sustainDb;
+        const float gainDb = attackWeight * attackBuffer[(size_t) sample]
+                   + (1.0f - attackWeight) * sustainBuffer[(size_t) sample];
         const float gain = juce::Decibels::decibelsToGain (gainDb);
-        const float blendedGain = (1.0f - mix) + mix * gain;
+        const float smoothedMix = mixBuffer[(size_t) sample];
+        const float blendedGain = (1.0f - smoothedMix) + smoothedMix * gain;
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {

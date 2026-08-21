@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 #include <array>
 
 class ReverbAudioProcessor : public juce::AudioProcessor
@@ -59,6 +60,8 @@ private:
     };
     std::vector<ChannelShimmer> shimmerState;
     juce::AudioBuffer<float> shimmerFeedbackBuffer;
+    juce::SmoothedValue<float> roomSizeSmoothed, dampingSmoothed, widthSmoothed;
+    juce::SmoothedValue<float> mixSmoothed, shimmerSmoothed;
 
     float processOctaveUp (ChannelShimmer& state, float input, float grainSizeSamples) noexcept;
 

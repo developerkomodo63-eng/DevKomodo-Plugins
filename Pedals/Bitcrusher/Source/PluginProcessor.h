@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class BitcrusherAudioProcessor : public juce::AudioProcessor
 {
@@ -45,6 +46,8 @@ private:
     // valor retenido, por canal.
     std::vector<float> heldSample;
     std::vector<int> holdCounter;
+    juce::SmoothedValue<float> mixSmoothed, outputGainSmoothed;
+    std::vector<float> mixBuffer, outputGainBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BitcrusherAudioProcessor)
 };

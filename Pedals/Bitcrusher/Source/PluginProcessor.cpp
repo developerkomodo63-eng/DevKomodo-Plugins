@@ -45,6 +45,10 @@ void BitcrusherAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     const int numChannels = juce::jmax (1, getTotalNumOutputChannels());
     heldSample.assign ((size_t) numChannels, 0.0f);
     holdCounter.assign ((size_t) numChannels, 0);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
 }
 
 void BitcrusherAudioProcessor::releaseResources()
@@ -74,6 +78,13 @@ void BitcrusherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -87,6 +98,14 @@ void BitcrusherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const float mix     = apvts.getRawParameterValue ("MIX")->load();
     const float levelDb = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) mixBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     // niveles de cuantizacion: 2^bits pasos repartidos en el rango -1..1
     const float levels = (float) (1 << bits);
@@ -114,7 +133,9 @@ void BitcrusherAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             // cuantizacion de amplitud (reduccion de bit depth)
             const float crushed = std::floor (held * levels) / levels;
 
-            channelData[sample] = (dry * (1.0f - mix) + crushed * mix) * outputGain;
+            const float smoothedMix = mixBuffer[(size_t) sample];
+            channelData[sample] = (dry * (1.0f - smoothedMix) + crushed * smoothedMix)
+                                * outputGainBuffer[(size_t) sample];
         }
     }
 }

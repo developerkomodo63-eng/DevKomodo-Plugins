@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class CompressorAudioProcessor : public juce::AudioProcessor
 {
@@ -42,6 +43,8 @@ private:
     // canales, como suelen ser los pedales: una sola envolvente para todos)
     float envelopeDb = -100.0f;
     float attackCoeff = 0.0f, releaseCoeff = 0.0f;
+    juce::SmoothedValue<float> makeupGainSmoothed;
+    juce::SmoothedValue<float> mixSmoothed;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CompressorAudioProcessor)
 };

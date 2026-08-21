@@ -41,8 +41,19 @@ AutoSwellAudioProcessor::~AutoSwellAudioProcessor()
 
 void AutoSwellAudioProcessor::prepareToPlay (double sampleRateIn, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
     sampleRate = sampleRateIn;
+    swellTimeSmoothed.reset (sampleRate, 0.02);
+    thresholdSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, 0.02);
+    outputGainSmoothed.reset (sampleRate, 0.02);
+    swellTimeBuffer.assign ((size_t) samplesPerBlock, 500.0f);
+    thresholdBuffer.assign ((size_t) samplesPerBlock, -40.0f);
+    mixBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    outputGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
+    swellTimeSmoothed.setCurrentAndTargetValue (500.0f);
+    thresholdSmoothed.setCurrentAndTargetValue (-40.0f);
+    mixSmoothed.setCurrentAndTargetValue (1.0f);
+    outputGainSmoothed.setCurrentAndTargetValue (1.0f);
 
     envelopeState = 0.0f;
     lastEnvelope = 0.0f;
@@ -79,6 +90,13 @@ void AutoSwellAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
@@ -92,12 +110,23 @@ void AutoSwellAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float mix         = apvts.getRawParameterValue ("MIX")->load();
     const float levelDb     = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain  = juce::Decibels::decibelsToGain (levelDb);
-
-    const float thresholdLinear = juce::Decibels::decibelsToGain (thresholdDb);
-    const float swellCoeff = std::exp (-1.0f / (swellTimeMs / 1000.0f * (float) sampleRate));
+    swellTimeSmoothed.setTargetValue (swellTimeMs);
+    thresholdSmoothed.setTargetValue (thresholdDb);
+    mixSmoothed.setTargetValue (mix);
+    outputGainSmoothed.setTargetValue (outputGain);
+    jassert (numSamples <= (int) swellTimeBuffer.size());
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        swellTimeBuffer[(size_t) sample] = swellTimeSmoothed.getNextValue();
+        thresholdBuffer[(size_t) sample] = thresholdSmoothed.getNextValue();
+        mixBuffer[(size_t) sample] = mixSmoothed.getNextValue();
+        outputGainBuffer[(size_t) sample] = outputGainSmoothed.getNextValue();
+    }
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        const float thresholdLinear = juce::Decibels::decibelsToGain (thresholdBuffer[(size_t) sample]);
+        const float swellCoeff = std::exp (-1.0f / (swellTimeBuffer[(size_t) sample] / 1000.0f * (float) sampleRate));
         const float peak = std::abs (buffer.getReadPointer (0)[sample]);
         const float envCoeff = (peak > envelopeState) ? envAttackCoeff : envReleaseCoeff;
         envelopeState = peak + envCoeff * (envelopeState - peak);
@@ -109,12 +138,13 @@ void AutoSwellAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
         swellGain += (1.0f - swellGain) * (1.0f - swellCoeff);
 
-        const float blendedGain = (1.0f - mix) + mix * swellGain;
+        const float smoothedMix = mixBuffer[(size_t) sample];
+        const float blendedGain = (1.0f - smoothedMix) + smoothedMix * swellGain;
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
         {
             float* channelData = buffer.getWritePointer (channel);
-            channelData[sample] = channelData[sample] * blendedGain * outputGain;
+            channelData[sample] = channelData[sample] * blendedGain * outputGainBuffer[(size_t) sample];
         }
     }
 }

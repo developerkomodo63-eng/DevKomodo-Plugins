@@ -7,7 +7,7 @@ juce_add_plugin(SpringReverb
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
     PLUGIN_CODE                 Spr1
-    FORMATS                     VST3
+    FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Spring Reverb")
 
 target_sources(SpringReverb

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../../Common/DemoRuntime.h"
 
 class ChorusAudioProcessor : public juce::AudioProcessor
 {
@@ -50,6 +51,10 @@ private:
 
     double sampleRate = 44100.0;
     float masterPhase = 0.0f;
+    juce::SmoothedValue<float> rateSmoothed, depthSmoothed, centreDelaySmoothed;
+    juce::SmoothedValue<float> widthSmoothed, feedbackSmoothed, mixSmoothed;
+    std::vector<float> rateBuffer, depthBuffer, centreDelayBuffer;
+    std::vector<float> widthBuffer, feedbackBuffer, mixBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChorusAudioProcessor)
 };

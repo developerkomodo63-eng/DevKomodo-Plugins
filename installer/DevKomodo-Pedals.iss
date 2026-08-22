@@ -36,53 +36,53 @@ Name: "utility"; Description: "Utility"
 [Files]
 Source: "allvst3\Boost.vst3\*"; DestDir: "{app}\Boost.vst3"; Flags: recursesubdirs; Components: drive
 Source: "allvst3\Clipper.vst3\*"; DestDir: "{app}\Clipper.vst3"; Flags: recursesubdirs; Components: drive
-Source: "allvst3\ConsoleDrive.vst3\*"; DestDir: "{app}\ConsoleDrive.vst3"; Flags: recursesubdirs; Components: drive
-Source: "allvst3\DistortionGuitar.vst3\*"; DestDir: "{app}\DistortionGuitar.vst3"; Flags: recursesubdirs; Components: drive
-Source: "allvst3\FuzzGuitar.vst3\*"; DestDir: "{app}\FuzzGuitar.vst3"; Flags: recursesubdirs; Components: drive
+Source: "allvst3\Console Drive.vst3\*"; DestDir: "{app}\Console Drive.vst3"; Flags: recursesubdirs; Components: drive
+Source: "allvst3\Distortion.vst3\*"; DestDir: "{app}\Distortion.vst3"; Flags: recursesubdirs; Components: drive
+Source: "allvst3\Fuzz.vst3\*"; DestDir: "{app}\Fuzz.vst3"; Flags: recursesubdirs; Components: drive
 Source: "allvst3\Overdrive.vst3\*"; DestDir: "{app}\Overdrive.vst3"; Flags: recursesubdirs; Components: drive
 Source: "allvst3\Preamp.vst3\*"; DestDir: "{app}\Preamp.vst3"; Flags: recursesubdirs; Components: drive
-Source: "allvst3\CleanUpPro.vst3\*"; DestDir: "{app}\CleanUpPro.vst3"; Flags: recursesubdirs; Components: drive
-Source: "allvst3\ToneSculptor.vst3\*"; DestDir: "{app}\ToneSculptor.vst3"; Flags: recursesubdirs; Components: drive
+Source: "allvst3\CleanUp Pro.vst3\*"; DestDir: "{app}\CleanUp Pro.vst3"; Flags: recursesubdirs; Components: drive
+Source: "allvst3\Tone Sculptor.vst3\*"; DestDir: "{app}\Tone Sculptor.vst3"; Flags: recursesubdirs; Components: drive
 Source: "allvst3\AmpSim.vst3\*"; DestDir: "{app}\AmpSim.vst3"; Flags: recursesubdirs; Components: drive
 Source: "allvst3\Compressor.vst3\*"; DestDir: "{app}\Compressor.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\BroadcastCompressor.vst3\*"; DestDir: "{app}\BroadcastCompressor.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\MultibandCompressor.vst3\*"; DestDir: "{app}\MultibandCompressor.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\NoiseGate.vst3\*"; DestDir: "{app}\NoiseGate.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\TransientShaper.vst3\*"; DestDir: "{app}\TransientShaper.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\Deesser.vst3\*"; DestDir: "{app}\Deesser.vst3"; Flags: recursesubdirs; Components: dynamics
-Source: "allvst3\AutoSwell.vst3\*"; DestDir: "{app}\AutoSwell.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\Broadcast Compressor.vst3\*"; DestDir: "{app}\Broadcast Compressor.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\Multiband Compressor.vst3\*"; DestDir: "{app}\Multiband Compressor.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\Noise Gate.vst3\*"; DestDir: "{app}\Noise Gate.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\Transient Shaper.vst3\*"; DestDir: "{app}\Transient Shaper.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\De-esser.vst3\*"; DestDir: "{app}\De-esser.vst3"; Flags: recursesubdirs; Components: dynamics
+Source: "allvst3\Auto Swell.vst3\*"; DestDir: "{app}\Auto Swell.vst3"; Flags: recursesubdirs; Components: dynamics
 Source: "allvst3\Chorus.vst3\*"; DestDir: "{app}\Chorus.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Flanger.vst3\*"; DestDir: "{app}\Flanger.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Phaser.vst3\*"; DestDir: "{app}\Phaser.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Tremolo.vst3\*"; DestDir: "{app}\Tremolo.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Vibrato.vst3\*"; DestDir: "{app}\Vibrato.vst3"; Flags: recursesubdirs; Components: modulation
-Source: "allvst3\RotarySpeaker.vst3\*"; DestDir: "{app}\RotarySpeaker.vst3"; Flags: recursesubdirs; Components: modulation
+Source: "allvst3\Rotary Speaker.vst3\*"; DestDir: "{app}\Rotary Speaker.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Doubler.vst3\*"; DestDir: "{app}\Doubler.vst3"; Flags: recursesubdirs; Components: modulation
-Source: "allvst3\RingModulator.vst3\*"; DestDir: "{app}\RingModulator.vst3"; Flags: recursesubdirs; Components: modulation
-Source: "allvst3\EnvelopeFilterGuitar.vst3\*"; DestDir: "{app}\EnvelopeFilterGuitar.vst3"; Flags: recursesubdirs; Components: modulation
+Source: "allvst3\Ring Modulator.vst3\*"; DestDir: "{app}\Ring Modulator.vst3"; Flags: recursesubdirs; Components: modulation
+Source: "allvst3\Envelope Filter.vst3\*"; DestDir: "{app}\Envelope Filter.vst3"; Flags: recursesubdirs; Components: modulation
 Source: "allvst3\Delay.vst3\*"; DestDir: "{app}\Delay.vst3"; Flags: recursesubdirs; Components: delayreverb
-Source: "allvst3\TapeDelay.vst3\*"; DestDir: "{app}\TapeDelay.vst3"; Flags: recursesubdirs; Components: delayreverb
+Source: "allvst3\Tape Delay.vst3\*"; DestDir: "{app}\Tape Delay.vst3"; Flags: recursesubdirs; Components: delayreverb
 Source: "allvst3\Reverb.vst3\*"; DestDir: "{app}\Reverb.vst3"; Flags: recursesubdirs; Components: delayreverb
-Source: "allvst3\SpringReverb.vst3\*"; DestDir: "{app}\SpringReverb.vst3"; Flags: recursesubdirs; Components: delayreverb
-Source: "allvst3\ConvolutionReverb.vst3\*"; DestDir: "{app}\ConvolutionReverb.vst3"; Flags: recursesubdirs; Components: delayreverb
-Source: "allvst3\EQ.vst3\*"; DestDir: "{app}\EQ.vst3"; Flags: recursesubdirs; Components: eq
-Source: "allvst3\GraphicEQ.vst3\*"; DestDir: "{app}\GraphicEQ.vst3"; Flags: recursesubdirs; Components: eq
-Source: "allvst3\AirEnhancer.vst3\*"; DestDir: "{app}\AirEnhancer.vst3"; Flags: recursesubdirs; Components: eq
+Source: "allvst3\Spring Reverb.vst3\*"; DestDir: "{app}\Spring Reverb.vst3"; Flags: recursesubdirs; Components: delayreverb
+Source: "allvst3\Convolution Reverb.vst3\*"; DestDir: "{app}\Convolution Reverb.vst3"; Flags: recursesubdirs; Components: delayreverb
+Source: "allvst3\EQ 6-Band.vst3\*"; DestDir: "{app}\EQ 6-Band.vst3"; Flags: recursesubdirs; Components: eq
+Source: "allvst3\Graphic EQ.vst3\*"; DestDir: "{app}\Graphic EQ.vst3"; Flags: recursesubdirs; Components: eq
+Source: "allvst3\Air Enhancer.vst3\*"; DestDir: "{app}\Air Enhancer.vst3"; Flags: recursesubdirs; Components: eq
 Source: "allvst3\Exciter.vst3\*"; DestDir: "{app}\Exciter.vst3"; Flags: recursesubdirs; Components: eq
-Source: "allvst3\PhaseAlign.vst3\*"; DestDir: "{app}\PhaseAlign.vst3"; Flags: recursesubdirs; Components: eq
-Source: "allvst3\ConsoleEQ.vst3\*"; DestDir: "{app}\ConsoleEQ.vst3"; Flags: recursesubdirs; Components: eq
+Source: "allvst3\Phase Align.vst3\*"; DestDir: "{app}\Phase Align.vst3"; Flags: recursesubdirs; Components: eq
+Source: "allvst3\Multiband Drive.vst3\*"; DestDir: "{app}\Multiband Drive.vst3"; Flags: recursesubdirs; Components: eq
 Source: "allvst3\Bitcrusher.vst3\*"; DestDir: "{app}\Bitcrusher.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\GlitchMachine.vst3\*"; DestDir: "{app}\GlitchMachine.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Glitch Machine.vst3\*"; DestDir: "{app}\Glitch Machine.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Granulator.vst3\*"; DestDir: "{app}\Granulator.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\VinylEmulation.vst3\*"; DestDir: "{app}\VinylEmulation.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\TapeEmulation.vst3\*"; DestDir: "{app}\TapeEmulation.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\OctaverGuitar.vst3\*"; DestDir: "{app}\OctaverGuitar.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\SynthGuitar.vst3\*"; DestDir: "{app}\SynthGuitar.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\SynthBass.vst3\*"; DestDir: "{app}\SynthBass.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\VocalShifter.vst3\*"; DestDir: "{app}\VocalShifter.vst3"; Flags: recursesubdirs; Components: texturesynth
-Source: "allvst3\UtilityGain.vst3\*"; DestDir: "{app}\UtilityGain.vst3"; Flags: recursesubdirs; Components: utility
-Source: "allvst3\MonoMaker.vst3\*"; DestDir: "{app}\MonoMaker.vst3"; Flags: recursesubdirs; Components: utility
-Source: "allvst3\DrumEnhancer.vst3\*"; DestDir: "{app}\DrumEnhancer.vst3"; Flags: recursesubdirs; Components: utility
+Source: "allvst3\Vinyl Emulation.vst3\*"; DestDir: "{app}\Vinyl Emulation.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Tape Emulation.vst3\*"; DestDir: "{app}\Tape Emulation.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Octaver.vst3\*"; DestDir: "{app}\Octaver.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Synth Guitar.vst3\*"; DestDir: "{app}\Synth Guitar.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Synth Bass.vst3\*"; DestDir: "{app}\Synth Bass.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\DevKomodo Vocal Shifter.vst3\*"; DestDir: "{app}\DevKomodo Vocal Shifter.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Utility Gain.vst3\*"; DestDir: "{app}\Utility Gain.vst3"; Flags: recursesubdirs; Components: utility
+Source: "allvst3\Mono Maker.vst3\*"; DestDir: "{app}\Mono Maker.vst3"; Flags: recursesubdirs; Components: utility
+Source: "allvst3\Drum Enhancer.vst3\*"; DestDir: "{app}\Drum Enhancer.vst3"; Flags: recursesubdirs; Components: utility
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

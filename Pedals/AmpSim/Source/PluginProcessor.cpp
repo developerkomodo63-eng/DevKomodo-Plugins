@@ -204,7 +204,17 @@ void AmpSimAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
     gainSmoothed.setTargetValue (gain);
     outputGainSmoothed.setTargetValue (outputGain);
-    jassert (numSamples <= (int) gainBuffer.size());
+    // jassert-only bounds checks are compiled out entirely in Release
+    // builds, so they gave zero real protection: if a host/exporter uses
+    // a block size larger than what prepareToPlay() originally sized
+    // these buffers for (this happens with some DAWs' offline bounce/
+    // export, which can use a different block size than realtime
+    // playback), the per-sample smoothing loop below would write past
+    // the end of these vectors -- a real heap buffer overflow, not just
+    // a debug-mode warning. Actually growing the buffers here fixes it
+    // for any block size the host throws at us.
+        if (numSamples > (int) gainBuffer.size()) gainBuffer.resize ((size_t) numSamples, 1.0f);
+        if (numSamples > (int) outputGainBuffer.size()) outputGainBuffer.resize ((size_t) numSamples, 1.0f);
     for (int sample = 0; sample < numSamples; ++sample)
     {
         gainBuffer[(size_t) sample] = gainSmoothed.getNextValue();

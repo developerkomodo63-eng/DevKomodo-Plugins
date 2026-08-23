@@ -134,7 +134,19 @@ void PhaserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     depthSmoothed.setTargetValue (depth);
     feedbackSmoothed.setTargetValue (feedback);
     mixSmoothed.setTargetValue (mix);
-    jassert (numSamples <= (int) rateBuffer.size());
+    // jassert-only bounds checks are compiled out entirely in Release
+    // builds, so they gave zero real protection: if a host/exporter uses
+    // a block size larger than what prepareToPlay() originally sized
+    // these buffers for (this happens with some DAWs' offline bounce/
+    // export, which can use a different block size than realtime
+    // playback), the per-sample smoothing loop below would write past
+    // the end of these vectors -- a real heap buffer overflow, not just
+    // a debug-mode warning. Actually growing the buffers here fixes it
+    // for any block size the host throws at us.
+        if (numSamples > (int) rateBuffer.size()) rateBuffer.resize ((size_t) numSamples, 0.0f);
+        if (numSamples > (int) depthBuffer.size()) depthBuffer.resize ((size_t) numSamples, 0.0f);
+        if (numSamples > (int) feedbackBuffer.size()) feedbackBuffer.resize ((size_t) numSamples, 0.0f);
+        if (numSamples > (int) mixBuffer.size()) mixBuffer.resize ((size_t) numSamples, 1.0f);
     for (int sample = 0; sample < numSamples; ++sample)
     {
         rateBuffer[(size_t) sample] = rateSmoothed.getNextValue();

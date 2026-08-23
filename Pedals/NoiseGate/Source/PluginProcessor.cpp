@@ -102,7 +102,17 @@ void NoiseGateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float rangeDb     = apvts.getRawParameterValue ("RANGE")->load();
     thresholdSmoothed.setTargetValue (thresholdDb);
     rangeSmoothed.setTargetValue (rangeDb);
-    jassert (numSamples <= (int) thresholdBuffer.size());
+    // jassert-only bounds checks are compiled out entirely in Release
+    // builds, so they gave zero real protection: if a host/exporter uses
+    // a block size larger than what prepareToPlay() originally sized
+    // these buffers for (this happens with some DAWs' offline bounce/
+    // export, which can use a different block size than realtime
+    // playback), the per-sample smoothing loop below would write past
+    // the end of these vectors -- a real heap buffer overflow, not just
+    // a debug-mode warning. Actually growing the buffers here fixes it
+    // for any block size the host throws at us.
+        if (numSamples > (int) thresholdBuffer.size()) thresholdBuffer.resize ((size_t) numSamples, -50.0f);
+        if (numSamples > (int) rangeBuffer.size()) rangeBuffer.resize ((size_t) numSamples, -80.0f);
     for (int sample = 0; sample < numSamples; ++sample)
     {
         thresholdBuffer[(size_t) sample] = thresholdSmoothed.getNextValue();

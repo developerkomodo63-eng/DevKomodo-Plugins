@@ -177,7 +177,7 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         for (int sample = 0; sample < numSamples; ++sample)
         {
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
-            channelData[sample] = midPushFilter.processSample (channel, channelData[sample]);
+            channelData[sample] = midPushFilter.processSample (channelData[sample]);
         }
     }
 

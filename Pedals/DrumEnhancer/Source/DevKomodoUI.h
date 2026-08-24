@@ -640,6 +640,11 @@ private:
         const auto category = upper (name);
         if (category.contains ("REVERB")) names = juce::StringArray { "INIT", "ROOM", "PLATE", "HALL", "ARENA" };
         else if (category.contains ("DELAY")) names = juce::StringArray { "INIT", "SLAP", "ECHO", "WIDE", "TAPE" };
+        else if (category.contains ("DRUM ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "PUNCH", "SNAP", "BIG" };
+        else if (category.contains ("ACOUSTIC GUITAR ENHANCER")) names = juce::StringArray { "INIT", "BODY", "PICK", "AIR", "STRUM" };
+        else if (category.contains ("BASS ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "FINGER", "PICK", "SUB" };
+        else if (category.contains ("GUITAR ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "CHIME", "PICK", "LEAD" };
+        else if (category.contains ("KEYS ENHANCER")) names = juce::StringArray { "INIT", "WEIGHT", "FOCUS", "AIR", "WIDE" };
         else if (category.contains ("CHORUS") || category.contains ("FLANGER") || category.contains ("PHASER") || category.contains ("VIBRATO")) names = juce::StringArray { "INIT", "CLASSIC", "MOTION", "WIDE", "JET" };
         else if (category.contains ("FUZZ") || category.contains ("DISTORT") || category.contains ("OVERDRIVE")) names = juce::StringArray { "INIT", "CRUNCH", "RHYTHM", "LEAD", "HEAVY" };
         else if (category.contains ("COMPRESS")) names = juce::StringArray { "INIT", "GLUE", "PUNCH", "SMOOTH", "LIMIT" };
@@ -685,6 +690,45 @@ private:
                 const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
                 setPresetValue ("GATE", v[0]); setPresetValue ("DEESSF", v[1]);
                 setPresetValue ("DEESSA", v[2]); setPresetValue ("TRANS", v[3]);
+            }
+            else if (category == "DRUM ENHANCER" && presetIndex > 0)
+            {
+                static constexpr float values[4][9] = {
+                    { 500.0f, 0.35f, 0.25f, 1.0f, -2.0f, 0.15f, 0.20f, 0.35f, 0.0f },
+                    { 650.0f, 0.65f, 0.35f, 5.0f, -1.0f, 0.30f, 0.35f, 0.70f, 0.0f },
+                    { 700.0f, 0.30f, 0.70f, 7.0f, -2.0f, 0.80f, 0.15f, 0.45f, 0.0f },
+                    { 450.0f, 0.75f, 0.55f, 4.0f,  2.0f, 0.45f, 0.65f, 0.85f, 0.0f } };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("CROSSOVER", v[0]); setPresetValue ("LOWDRIVE", v[1]);
+                setPresetValue ("HIGHDRIVE", v[2]); setPresetValue ("ATTACK", v[3]);
+                setPresetValue ("SUSTAIN", v[4]); setPresetValue ("SNAP", v[5]);
+                setPresetValue ("SUB", v[6]); setPresetValue ("PUNCH", v[7]);
+                setPresetValue ("LEVEL", v[8]);
+            }
+            else if ((category == "BASS ENHANCER" || category == "GUITAR ENHANCER"
+                      || category == "ACOUSTIC GUITAR ENHANCER" || category == "KEYS ENHANCER")
+                     && presetIndex > 0)
+            {
+                static constexpr float bass[4][7] = {
+                    { 0.45f, 0.20f, 0.55f, 1.0f, 0.0f, 0.75f, 0.0f }, { 0.60f, 0.35f, 0.80f, 3.0f, -1.0f, 0.75f, -1.0f },
+                    { 0.35f, 0.55f, 0.95f, 2.0f, 0.0f, 0.70f, -1.0f }, { 0.80f, 0.30f, 0.85f, 1.0f, -2.0f, 0.80f, -2.0f } };
+                static constexpr float guitar[4][7] = {
+                    { 0.25f, 0.30f, 0.30f, 1.0f, 0.0f, 0.70f, 0.0f }, { 0.35f, 0.55f, 0.55f, 3.0f, 0.0f, 0.72f, -1.0f },
+                    { 0.20f, 0.70f, 0.70f, 2.0f, -1.0f, 0.68f, -1.0f }, { 0.30f, 0.65f, 0.80f, 5.0f, 1.0f, 0.72f, -2.0f } };
+                static constexpr float acoustic[4][7] = {
+                    { 0.45f, 0.25f, 0.35f, 1.0f, 0.0f, 0.70f, 0.0f }, { 0.65f, 0.35f, 0.55f, 2.0f, -1.0f, 0.75f, -1.0f },
+                    { 0.30f, 0.70f, 0.80f, 3.0f, 0.0f, 0.65f, -1.0f }, { 0.55f, 0.80f, 0.90f, 4.0f, -2.0f, 0.70f, -2.0f } };
+                static constexpr float keys[4][7] = {
+                    { 0.35f, 0.25f, 0.30f, 0.0f, 1.0f, 0.70f, 0.0f }, { 0.55f, 0.40f, 0.50f, 2.0f, 0.0f, 0.72f, -1.0f },
+                    { 0.25f, 0.65f, 0.65f, 1.0f, 0.0f, 0.70f, -1.0f }, { 0.45f, 0.55f, 0.75f, 3.0f, -1.0f, 0.75f, -2.0f } };
+                const int idx = juce::jlimit (0, 3, presetIndex - 1);
+                const float* v = category == "BASS ENHANCER" ? bass[idx]
+                                  : category == "GUITAR ENHANCER" ? guitar[idx]
+                                  : category == "ACOUSTIC GUITAR ENHANCER" ? acoustic[idx] : keys[idx];
+                setPresetValue ("BODY", v[0]); setPresetValue ("DETAIL", v[1]);
+                setPresetValue ("HARMONICS", v[2]); setPresetValue ("ATTACK", v[3]);
+                setPresetValue ("SUSTAIN", v[4]); setPresetValue ("MIX", v[5]);
+                setPresetValue ("LEVEL", v[6]);
             }
             else if (category == "TONE SCULPTOR" && presetIndex > 0)
             {

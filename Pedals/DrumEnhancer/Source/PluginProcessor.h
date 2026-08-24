@@ -53,5 +53,20 @@ private:
     };
     std::vector<ChannelSplit> splits;
 
+        juce::SmoothedValue<float> attackSmoothed, sustainSmoothed, snapSmoothed;
+        juce::SmoothedValue<float> subSmoothed, punchSmoothed;
+        std::vector<float> attackBuffer, sustainBuffer, snapBuffer, subBuffer, punchBuffer;
+        std::vector<float> attackWeightBuffer, transientGainBuffer;
+        std::vector<float> subState;
+        float subPhase = 0.0f;
+        float subEnvelope = 0.0f;
+        float previousTransient = 0.0f;
+        float fastEnvelope = 0.0f;
+        float slowEnvelope = 0.0f;
+        float fastAttackCoeff = 0.0f;
+        float fastReleaseCoeff = 0.0f;
+        float slowAttackCoeff = 0.0f;
+        float slowReleaseCoeff = 0.0f;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DrumEnhancerAudioProcessor)
 };

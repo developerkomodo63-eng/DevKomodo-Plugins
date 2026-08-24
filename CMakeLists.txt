@@ -91,4 +91,8 @@ add_subdirectory(Pedals/UtilityGain)
 add_subdirectory(Pedals/ToneSculptor)
 add_subdirectory(Pedals/ConsoleDrive)
 add_subdirectory(Pedals/CleanUpPro)
+add_subdirectory(Pedals/BassEnhancer)
+add_subdirectory(Pedals/GuitarEnhancer)
+add_subdirectory(Pedals/AcGuitarEnhancer)
+add_subdirectory(Pedals/KeysEnhancer)
 

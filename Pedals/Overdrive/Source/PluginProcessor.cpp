@@ -59,6 +59,9 @@ void OverdriveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     lpFilter.prepare(spec);
     lpFilter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
 
+    midPushFilter.reset();
+    midPushFilter.prepare(spec);
+
     dcBlockerX1.assign((size_t) spec.numChannels, 0.0f);
     dcBlockerY1.assign((size_t) spec.numChannels, 0.0f);
     smoothedDriveBuffer.assign ((size_t) samplesPerBlock, 1.0f);
@@ -139,6 +142,12 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     const float outputGain = juce::Decibels::decibelsToGain(levelDb);
     const bool hq = apvts.getRawParameterValue ("HQ")->load() > 0.5f;
 
+    const float midFrequency = bassMode ? 220.0f : 850.0f;
+    const float midGainDb = bassMode ? 2.5f : 4.5f + character * 1.5f;
+    *midPushFilter.coefficients = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (
+        getSampleRate(), midFrequency, 0.75f,
+        juce::Decibels::decibelsToGain (midGainDb));
+
     driveSmoothed.setTargetValue (drive);
     outputGainSmoothed.setTargetValue (outputGain);
 
@@ -166,7 +175,10 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     {
         float* channelData = buffer.getWritePointer (channel);
         for (int sample = 0; sample < numSamples; ++sample)
+        {
             channelData[sample] = hpFilter.processSample (channel, channelData[sample]);
+            channelData[sample] = midPushFilter.processSample (channel, channelData[sample]);
+        }
     }
 
     juce::dsp::AudioBlock<float> audioBlock (buffer);

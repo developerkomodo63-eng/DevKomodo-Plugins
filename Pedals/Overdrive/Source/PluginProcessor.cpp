@@ -144,7 +144,7 @@ void OverdriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     const float midFrequency = bassMode ? 220.0f : 850.0f;
     const float midGainDb = bassMode ? 2.5f : 4.5f + character * 1.5f;
-    *midPushFilter.coefficients = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (
+    *midPushFilter.state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter (
         getSampleRate(), midFrequency, 0.75f,
         juce::Decibels::decibelsToGain (midGainDb));
 

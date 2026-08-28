@@ -38,7 +38,7 @@ macOS releases additionally require these repository secrets:
 Signing is conditional: ordinary pull requests can still build without release
 credentials, while tagged or manually dispatched releases use them when set.
 
-## Plugin list (49)
+## Plugin list (55)
 
 **Drive / Distortion** — Boost, Clipper, Console Drive, Distortion, Fuzz, Overdrive, Preamp, CleanUp Pro, Tone Sculptor, AmpSim, Multiband Drive
 
@@ -50,9 +50,11 @@ credentials, while tagged or manually dispatched releases use them when set.
 
 **EQ / Tone shaping** — EQ 6-Band, Graphic EQ, Air Enhancer, Exciter, Phase Align
 
-**Texture / Synth** — Bitcrusher, Glitch Machine, Granulator, Vinyl Emulation, Tape Emulation, Octaver, Synth Guitar, Synth Bass, DevKomodo Vocal Shifter
+**Texture / Synth** — Bitcrusher, Glitch Machine, Granulator, Vinyl Emulation, Tape Emulation, Cassette Emulation, Octaver, Synth Guitar, Synth Bass, DevKomodo Vocal Shifter
 
-**Utility** — Utility Gain, Mono Maker, Drum Enhancer
+**Utility** — Utility Gain, Mono Maker
+
+**Instrument Enhancers** — Drum Enhancer, Bass Enhancer, Guitar Enhancer, Keys Enhancer, Acoustic Guitar Enhancer, Vocal Enhancer
 
 ## Building from source
 
@@ -63,20 +65,3 @@ cmake -B build
 cmake --build build --config Release
 ```
 
-### Demo build
-
-For review copies, configure with `-DDEVKOMODO_DEMO_BUILD=ON`. The demo marks
-the UI as DEMO and stops producing audio after 15 minutes of cumulative host
-playback. The commercial build leaves this option OFF.
-
-> **Before distributing a commercial build:** this project fetches JUCE
-> directly from the official JUCE repository. Confirm you're covered by a
-> JUCE license tier appropriate for commercial/paid distribution (JUCE's
-> free tier has revenue limits and a mandatory splash screen requirement —
-> see https://juce.com/get-juce for current terms). This is a licensing
-> decision for the project owner, not something this build configures for
-> you automatically.
-
-## License
-
-See `LICENSE`. All plugin DSP/UI source in this repository is © DevKomodo.

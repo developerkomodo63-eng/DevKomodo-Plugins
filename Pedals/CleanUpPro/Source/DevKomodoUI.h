@@ -648,6 +648,13 @@ private:
         else if (category.contains ("CLEANUP PRO")) names = juce::StringArray { "INIT", "VOCAL", "GUITAR", "PUNCH", "SURGICAL" };
         else if (category.contains ("TONE SCULPTOR")) names = juce::StringArray { "INIT", "WARM", "BRIGHT", "BODY", "MODERN" };
         else if (category.contains ("MULTIBAND DRIVE")) names = juce::StringArray { "INIT", "AIR", "PRESENCE", "GRIT", "CRUSH" };
+        else if (category.contains ("DRUM ENHANCER")) names = juce::StringArray { "INIT", "TIGHT KICK", "TRAP", "ROCK", "SMASH" };
+        else if (category.contains ("BASS ENHANCER")) names = juce::StringArray { "INIT", "SMALL SPEAKER", "STUDIO", "PICK CLARITY", "MODERN" };
+        else if (category.contains ("GUITAR ENHANCER")) names = juce::StringArray { "INIT", "MIX CLARITY", "STRUM CONTROL", "LEAD CUT", "LIVE" };
+        else if (category.contains ("KEYS ENHANCER")) names = juce::StringArray { "INIT", "WIDE PAD", "TIGHT COMP", "AIRY", "LUSH" };
+        else if (category.contains ("ACOUSTIC GUITAR ENHANCER")) names = juce::StringArray { "INIT", "STUDIO", "LIVE STRUM", "FINGERSTYLE", "BRIGHT" };
+        else if (category.contains ("VOCAL ENHANCER")) names = juce::StringArray { "INIT", "PODCAST", "LEAD VOCAL", "BREATHY", "BROADCAST" };
+        else if (category.contains ("CASSETTE EMULATION")) names = juce::StringArray { "INIT", "MIXTAPE", "LO-FI BOOMBOX", "WALKMAN", "DEMO 4-TRACK" };
 
         std::vector<Preset> result;
         result.reserve ((size_t) names.size());
@@ -813,6 +820,99 @@ private:
                 setPresetValue ("THRESHOLD", threshold[idx]); setPresetValue ("RATIO", ratio[idx]);
                 setPresetValue ("ATTACK", attack[idx]); setPresetValue ("RELEASE", release[idx]);
                 setPresetValue ("MAKEUP", makeup[idx]); setPresetValue ("MODE", mode[idx]);
+            }
+            else if (category == "BASS ENHANCER" && presetIndex > 0)
+            {
+                // focus, harmonics, tight, mix, level
+                static constexpr float values[4][5] = {
+                    { 150.0f, 7.0f, 3.0f, 0.75f, 1.0f },  // Small Speaker: max harmonics for translation
+                    { 100.0f, 3.0f, 2.0f, 0.50f, 0.0f },  // Studio: subtle, trust the monitors
+                    { 130.0f, 4.0f, 7.0f, 0.65f, 0.0f },  // Pick Clarity: tightens up between notes fast
+                    { 160.0f, 6.0f, 5.0f, 0.70f, 1.0f }   // Modern: pushed across the board
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("FOCUS", v[0]); setPresetValue ("HARMONICS", v[1]);
+                setPresetValue ("TIGHT", v[2]); setPresetValue ("MIX", v[3]); setPresetValue ("LEVEL", v[4]);
+            }
+            else if (category == "GUITAR ENHANCER" && presetIndex > 0)
+            {
+                // clarity, presence, mix, level
+                static constexpr float values[4][4] = {
+                    { 7.0f, 3.0f, 0.80f, 0.0f },  // Mix Clarity: dig the mud out
+                    { 8.0f, 2.0f, 0.85f, -1.0f }, // Strum Control: heavy adaptive cut for dense chords
+                    { 3.0f, 7.0f, 0.70f, 0.0f },  // Lead Cut: presence-forward for single-note lines
+                    { 5.0f, 5.0f, 0.75f, 0.5f }   // Live: balanced, a bit more level for the room
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("CLARITY", v[0]); setPresetValue ("PRESENCE", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "KEYS ENHANCER" && presetIndex > 0)
+            {
+                // shimmer, width, mix, level
+                static constexpr float values[4][4] = {
+                    { 3.0f, 8.0f, 0.85f, 0.0f },  // Wide Pad: width-forward for sustained pads
+                    { 2.0f, 2.0f, 0.60f, 0.0f },  // Tight Comp: minimal, keeps things centered/mono-safe
+                    { 8.0f, 4.0f, 0.75f, 0.5f },  // Airy: shimmer-forward
+                    { 6.0f, 6.0f, 0.80f, 0.0f }   // Lush: both pushed
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("SHIMMER", v[0]); setPresetValue ("WIDTH", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "ACOUSTIC GUITAR ENHANCER" && presetIndex > 0)
+            {
+                // debox, sparkle, mix, level
+                static constexpr float values[4][4] = {
+                    { 4.0f, 3.0f, 0.65f, 0.0f },  // Studio: gentle, already well-mic'd
+                    { 8.0f, 4.0f, 0.80f, 0.5f },  // Live Strum: heavy debox for a boomy stage mic
+                    { 3.0f, 6.0f, 0.70f, 0.0f },  // Fingerstyle: sparkle-forward, minimal debox
+                    { 5.0f, 8.0f, 0.75f, 0.5f }   // Bright: both pushed
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("DEBOX", v[0]); setPresetValue ("SPARKLE", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "CASSETTE EMULATION" && presetIndex > 0)
+            {
+                // type, wow, dolby, hiss, mix, level
+                static constexpr float values[4][6] = {
+                    { 1.0f, 3.0f, 4.0f, 2.0f, 0.85f, 0.0f },  // Mixtape: chrome, clean-ish but present
+                    { 0.0f, 7.0f, 6.0f, 7.0f, 1.0f, -1.0f },  // Lo-Fi Boombox: ferric, worn out
+                    { 1.0f, 5.0f, 5.0f, 4.0f, 0.90f, 0.0f },  // Walkman: chrome, moderate wobble
+                    { 0.0f, 8.0f, 3.0f, 8.0f, 1.0f, -2.0f }   // Demo 4-Track: ferric, hissy and loose
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("TYPE", v[0]); setPresetValue ("WOW", v[1]);
+                setPresetValue ("DOLBY", v[2]); setPresetValue ("HISS", v[3]);
+                setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
+            }
+            else if (category == "VOCAL ENHANCER" && presetIndex > 0)
+            {
+                // warmth, air, mix, level
+                static constexpr float values[4][4] = {
+                    { 5.0f, 4.0f, 0.75f, 0.0f },  // Podcast: fuller voiced content, controlled air
+                    { 4.0f, 5.0f, 0.70f, 0.0f },  // Lead Vocal: balanced
+                    { 2.0f, 8.0f, 0.80f, 0.5f },  // Breathy: air-forward, minimal warmth
+                    { 6.0f, 3.0f, 0.65f, 0.0f }   // Broadcast: warm, controlled top end
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("WARMTH", v[0]); setPresetValue ("AIR", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "DRUM ENHANCER" && presetIndex > 0)
+            {
+                // crossover, punch, sub, crack, mix, level
+                static constexpr float values[4][6] = {
+                    { 500.0f, 3.0f, 5.0f, 1.0f, 0.55f, 0.0f },  // Tight Kick: sub-forward, minimal top
+                    { 700.0f, 5.0f, 2.0f, 6.0f, 0.65f, 0.5f },  // Trap: crack-forward 808-style click
+                    { 550.0f, 6.0f, 4.0f, 5.0f, 0.60f, 0.0f },  // Rock: balanced punch across the kit
+                    { 450.0f, 8.0f, 7.0f, 8.0f, 0.80f, -1.0f }  // Smash: everything pushed hard
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("CROSSOVER", v[0]); setPresetValue ("PUNCH", v[1]);
+                setPresetValue ("SUB", v[2]); setPresetValue ("CRACK", v[3]);
+                setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
             }
             else if (category == "MULTIBAND DRIVE" && presetIndex > 0)
             {

@@ -41,7 +41,6 @@ public:
 private:
     juce::dsp::StateVariableTPTFilter<float> hpFilter;
     juce::dsp::StateVariableTPTFilter<float> lpFilter;
-    juce::dsp::IIR::Filter<float> midPushFilter;
 
     std::vector<float> dcBlockerX1, dcBlockerY1;
     static constexpr float dcBlockerR = 0.995f;

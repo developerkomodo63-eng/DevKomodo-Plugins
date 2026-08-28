@@ -39,34 +39,27 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout() };
 
 private:
-    // Excitador armonico multibanda clasico: separa graves/agudos con un
-    // cruce Linkwitz-Riley, agrega saturacion suave (distinta por banda)
-    // EN PARALELO con la señal seca, y suma. Aclaracion honesta: los
-    // excitadores multibanda de hardware clasicos tambien suelen hacer
-    // alineacion de fase/tiempo entre bandas; aca lo omitimos por
-    // simplicidad, esto se queda con la parte que mas define el caracter
-    // (excitacion armonica por banda).
-    struct ChannelSplit
+    // Rediseñado desde cero: la version anterior era un excitador armonico
+    // multibanda ESTATICO (misma saturacion todo el tiempo, sin importar
+    // si hay un golpe o no), lo cual no suena a "drum enhancer" real --
+    // suena igual en el sustain de un platillo que en el ataque de un
+    // kick. Un enhancer de bateria de verdad reacciona al transitorio:
+    //   - PUNCH: boost dinamico en graves, proporcional al transitorio
+    //     detectado (no una saturacion pareja todo el rato)
+    //   - SUB: capa de sub armonico sintetizado (graves muy filtrados +
+    //     saturados) para peso real de kick, no solo "mas graves"
+    //   - CRACK: excitacion de agudos activada SOLO durante el
+    //     transitorio, para no ensuciar el sustain de platillos/hihats
+    struct ChannelState
     {
         juce::dsp::LinkwitzRileyFilter<float> lowLP, highHP;
-        void reset() { lowLP.reset(); highHP.reset(); }
+        juce::dsp::IIR::Filter<float> subLP;
+        float fastEnv = 0.0f, slowEnv = 0.0f;
+        void reset() { lowLP.reset(); highHP.reset(); subLP.reset(); fastEnv = 0.0f; slowEnv = 0.0f; }
     };
-    std::vector<ChannelSplit> splits;
-
-        juce::SmoothedValue<float> attackSmoothed, sustainSmoothed, snapSmoothed;
-        juce::SmoothedValue<float> subSmoothed, punchSmoothed;
-        std::vector<float> attackBuffer, sustainBuffer, snapBuffer, subBuffer, punchBuffer;
-        std::vector<float> attackWeightBuffer, transientGainBuffer;
-        std::vector<float> subState;
-        float subPhase = 0.0f;
-        float subEnvelope = 0.0f;
-        float previousTransient = 0.0f;
-        float fastEnvelope = 0.0f;
-        float slowEnvelope = 0.0f;
-        float fastAttackCoeff = 0.0f;
-        float fastReleaseCoeff = 0.0f;
-        float slowAttackCoeff = 0.0f;
-        float slowReleaseCoeff = 0.0f;
+    std::vector<ChannelState> channels;
+    float fastAttackCoeff = 0.0f, fastReleaseCoeff = 0.0f;
+    float slowAttackCoeff = 0.0f, slowReleaseCoeff = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DrumEnhancerAudioProcessor)
 };

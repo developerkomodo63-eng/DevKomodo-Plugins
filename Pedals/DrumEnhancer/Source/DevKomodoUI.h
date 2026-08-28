@@ -211,6 +211,7 @@ public:
                 c.box->addItemList (choice->choices, 1);
                 c.box->setTooltip (devkomodo::parameterTooltip (id, ranged->name));
                 c.box->setLookAndFeel (&knobLookAndFeel);
+                c.box->setLookAndFeel (&knobLookAndFeel);
                 c.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
                     (apvts, id, *c.box);
                 c.paramID = id;
@@ -332,12 +333,67 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour::fromRGB (9, 10, 13));
+        // Every panel colour below is the old neutral grey blended a little
+        // towards this pedal's accent, so each plugin reads as "its own
+        // colour" instead of all 47 pedals sharing one identical grey/green
+        // skin. This is paint-only (runs on repaint, never on the audio
+        // thread), so it costs nothing extra in real-time processing.
+        const auto category = name.toUpperCase();
+        auto familyColour = juce::Colour::fromRGB (48, 166, 196);
+        if (category.contains ("COMPRESS") || category.contains ("LIMIT")
+            || category.contains ("GATE") || category.contains ("DYNAM"))
+            familyColour = juce::Colour::fromRGB (54, 132, 226);
+        else if (category.contains ("ENHANCER"))
+            familyColour = juce::Colour::fromRGB (73, 190, 128);
+        else if (category.contains ("EQ") || category.contains ("TONE"))
+            familyColour = juce::Colour::fromRGB (208, 169, 58);
+        else if (category.contains ("EXCITER"))
+            familyColour = juce::Colour::fromRGB (244, 126, 64);
+        else if (category.contains ("CHORUS") || category.contains ("FLANGER")
+                 || category.contains ("PHASER") || category.contains ("VIBRATO")
+                 || category.contains ("TREMOLO") || category.contains ("ROTARY")
+                 || category.contains ("RING"))
+            familyColour = juce::Colour::fromRGB (141, 83, 224);
+        else if (category.contains ("REVERB") || category.contains ("DELAY")
+                 || category.contains ("DOUBLER") || category.contains ("SPACE"))
+            familyColour = juce::Colour::fromRGB (40, 184, 190);
+        else if (category.contains ("FUZZ") || category.contains ("DISTORT")
+                 || category.contains ("OVERDRIVE") || category.contains ("DRIVE")
+                 || category.contains ("SATUR") || category.contains ("PREAMP")
+                 || category.contains ("CLIPPER"))
+            familyColour = juce::Colour::fromRGB (220, 83, 48);
+        else if (category.contains ("FILTER") || category.contains ("OCTAVER"))
+            familyColour = juce::Colour::fromRGB (76, 190, 177);
+        else if (category.contains ("GLITCH") || category.contains ("GRANULATOR")
+                 || category.contains ("BITCRUSHER"))
+            familyColour = juce::Colour::fromRGB (214, 74, 157);
+        else if (category.contains ("TAPE") || category.contains ("CASSETTE")
+                 || category.contains ("VINYL"))
+            familyColour = juce::Colour::fromRGB (188, 128, 72);
+
+        const auto bgBase     = juce::Colour::fromRGB (9, 10, 13).interpolatedWith (familyColour, 0.24f);
+        const auto panelBase  = juce::Colour::fromRGB (27, 29, 35).interpolatedWith (familyColour, 0.16f);
+        const auto panelEdge  = juce::Colour::fromRGB (55, 58, 68).interpolatedWith (familyColour, 0.32f);
+        const auto cardBase   = juce::Colour::fromRGB (22, 24, 29).interpolatedWith (familyColour, 0.13f);
+        const auto cardEdge   = juce::Colour::fromRGB (48, 52, 61).interpolatedWith (familyColour, 0.24f);
+        const auto headerBase = juce::Colour::fromRGB (21, 23, 28).interpolatedWith (familyColour, 0.19f);
+        const auto meterBase  = juce::Colour::fromRGB (16, 17, 21).interpolatedWith (familyColour, 0.12f);
+        const auto meterEdge  = juce::Colour::fromRGB (65, 68, 77).interpolatedWith (familyColour, 0.28f);
+
+        g.fillAll (bgBase);
+
+        // A quiet technical grid gives the dark surface depth without
+        // competing with the controls.
+        g.setColour (accent.withAlpha (0.035f));
+        for (float x = 0.0f; x < (float) getWidth(); x += 24.0f)
+            g.drawVerticalLine ((int) x, 0.0f, (float) getHeight());
+        for (float y = 0.0f; y < (float) getHeight(); y += 24.0f)
+            g.drawHorizontalLine ((int) y, 0.0f, (float) getWidth());
 
         auto outer = getLocalBounds().toFloat().reduced (14.0f);
-        g.setColour (juce::Colour::fromRGB (27, 29, 35));
+        g.setColour (panelBase);
         g.fillRoundedRectangle (outer, 13.0f);
-        g.setColour (juce::Colour::fromRGB (55, 58, 68));
+        g.setColour (panelEdge);
         g.drawRoundedRectangle (outer, 13.0f, 1.0f);
 
         // Static card shading is paint-only; it adds no DSP cost. The card
@@ -348,22 +404,27 @@ public:
         for (const auto& cell : controlCellBounds)
         {
             auto card = cell.toFloat();
-            g.setColour (juce::Colour::fromRGB (22, 24, 29));
+            g.setColour (cardBase);
             g.fillRoundedRectangle (card, 9.0f);
-            g.setColour (juce::Colour::fromRGB (48, 52, 61));
+            g.setColour (cardEdge);
             g.drawRoundedRectangle (card, 9.0f, 1.0f);
         }
 
         auto header = outer.removeFromTop (64.0f);
-        g.setColour (juce::Colour::fromRGB (21, 23, 28));
+        g.setColour (headerBase);
         g.fillRoundedRectangle (header, 12.0f);
+        g.setColour (accent.withAlpha (0.08f));
+        g.fillRoundedRectangle (header.reduced (1.0f), 11.0f);
         g.setColour (accent);
         g.fillRoundedRectangle (header.getX(), header.getY(), 4.0f, header.getHeight(), 2.0f);
+        g.setColour (accent.withAlpha (0.20f));
+        g.drawLine (header.getX() + 18.0f, header.getBottom() - 1.0f,
+                header.getRight() - 18.0f, header.getBottom() - 1.0f, 1.0f);
 
         auto meter = outer.removeFromTop (34.0f).reduced (10.0f, 7.0f);
-        g.setColour (juce::Colour::fromRGB (16, 17, 21));
+        g.setColour (meterBase);
         g.fillRoundedRectangle (meter, 7.0f);
-        g.setColour (juce::Colour::fromRGB (65, 68, 77));
+        g.setColour (meterEdge);
         g.drawRoundedRectangle (meter, 7.0f, 1.0f);
 
         // This is intentionally a status strip, not a fake audio meter. The
@@ -640,11 +701,6 @@ private:
         const auto category = upper (name);
         if (category.contains ("REVERB")) names = juce::StringArray { "INIT", "ROOM", "PLATE", "HALL", "ARENA" };
         else if (category.contains ("DELAY")) names = juce::StringArray { "INIT", "SLAP", "ECHO", "WIDE", "TAPE" };
-        else if (category.contains ("DRUM ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "PUNCH", "SNAP", "BIG" };
-        else if (category.contains ("ACOUSTIC GUITAR ENHANCER")) names = juce::StringArray { "INIT", "BODY", "PICK", "AIR", "STRUM" };
-        else if (category.contains ("BASS ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "FINGER", "PICK", "SUB" };
-        else if (category.contains ("GUITAR ENHANCER")) names = juce::StringArray { "INIT", "TIGHT", "CHIME", "PICK", "LEAD" };
-        else if (category.contains ("KEYS ENHANCER")) names = juce::StringArray { "INIT", "WEIGHT", "FOCUS", "AIR", "WIDE" };
         else if (category.contains ("CHORUS") || category.contains ("FLANGER") || category.contains ("PHASER") || category.contains ("VIBRATO")) names = juce::StringArray { "INIT", "CLASSIC", "MOTION", "WIDE", "JET" };
         else if (category.contains ("FUZZ") || category.contains ("DISTORT") || category.contains ("OVERDRIVE")) names = juce::StringArray { "INIT", "CRUNCH", "RHYTHM", "LEAD", "HEAVY" };
         else if (category.contains ("COMPRESS")) names = juce::StringArray { "INIT", "GLUE", "PUNCH", "SMOOTH", "LIMIT" };
@@ -653,6 +709,13 @@ private:
         else if (category.contains ("CLEANUP PRO")) names = juce::StringArray { "INIT", "VOCAL", "GUITAR", "PUNCH", "SURGICAL" };
         else if (category.contains ("TONE SCULPTOR")) names = juce::StringArray { "INIT", "WARM", "BRIGHT", "BODY", "MODERN" };
         else if (category.contains ("MULTIBAND DRIVE")) names = juce::StringArray { "INIT", "AIR", "PRESENCE", "GRIT", "CRUSH" };
+        else if (category.contains ("DRUM ENHANCER")) names = juce::StringArray { "INIT", "TIGHT KICK", "TRAP", "ROCK", "SMASH" };
+        else if (category.contains ("BASS ENHANCER")) names = juce::StringArray { "INIT", "SMALL SPEAKER", "STUDIO", "PICK CLARITY", "MODERN" };
+        else if (category.contains ("GUITAR ENHANCER")) names = juce::StringArray { "INIT", "MIX CLARITY", "STRUM CONTROL", "LEAD CUT", "LIVE" };
+        else if (category.contains ("KEYS ENHANCER")) names = juce::StringArray { "INIT", "WIDE PAD", "TIGHT COMP", "AIRY", "LUSH" };
+        else if (category.contains ("ACOUSTIC GUITAR ENHANCER")) names = juce::StringArray { "INIT", "STUDIO", "LIVE STRUM", "FINGERSTYLE", "BRIGHT" };
+        else if (category.contains ("VOCAL ENHANCER")) names = juce::StringArray { "INIT", "PODCAST", "LEAD VOCAL", "BREATHY", "BROADCAST" };
+        else if (category.contains ("CASSETTE EMULATION")) names = juce::StringArray { "INIT", "MIXTAPE", "LO-FI BOOMBOX", "WALKMAN", "DEMO 4-TRACK" };
         else if (category.contains ("AMPSIM")) names = juce::StringArray { "INIT", "CLEAN", "CRUNCH", "LEAD", "MODERN" };
 
         std::vector<Preset> result;
@@ -691,56 +754,22 @@ private:
                 setPresetValue ("GATE", v[0]); setPresetValue ("DEESSF", v[1]);
                 setPresetValue ("DEESSA", v[2]); setPresetValue ("TRANS", v[3]);
             }
-            else if (category == "DRUM ENHANCER" && presetIndex > 0)
-            {
-                static constexpr float values[4][9] = {
-                    { 500.0f, 0.35f, 0.25f, 1.0f, -2.0f, 0.15f, 0.20f, 0.35f, 0.0f },
-                    { 650.0f, 0.65f, 0.35f, 5.0f, -1.0f, 0.30f, 0.35f, 0.70f, 0.0f },
-                    { 700.0f, 0.30f, 0.70f, 7.0f, -2.0f, 0.80f, 0.15f, 0.45f, 0.0f },
-                    { 450.0f, 0.75f, 0.55f, 4.0f,  2.0f, 0.45f, 0.65f, 0.85f, 0.0f } };
-                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
-                setPresetValue ("CROSSOVER", v[0]); setPresetValue ("LOWDRIVE", v[1]);
-                setPresetValue ("HIGHDRIVE", v[2]); setPresetValue ("ATTACK", v[3]);
-                setPresetValue ("SUSTAIN", v[4]); setPresetValue ("SNAP", v[5]);
-                setPresetValue ("SUB", v[6]); setPresetValue ("PUNCH", v[7]);
-                setPresetValue ("LEVEL", v[8]);
-            }
-            else if ((category == "BASS ENHANCER" || category == "GUITAR ENHANCER"
-                      || category == "ACOUSTIC GUITAR ENHANCER" || category == "KEYS ENHANCER")
-                     && presetIndex > 0)
-            {
-                static constexpr float bass[4][7] = {
-                    { 0.45f, 0.20f, 0.55f, 1.0f, 0.0f, 0.75f, 0.0f }, { 0.60f, 0.35f, 0.80f, 3.0f, -1.0f, 0.75f, -1.0f },
-                    { 0.35f, 0.55f, 0.95f, 2.0f, 0.0f, 0.70f, -1.0f }, { 0.80f, 0.30f, 0.85f, 1.0f, -2.0f, 0.80f, -2.0f } };
-                static constexpr float guitar[4][7] = {
-                    { 0.25f, 0.30f, 0.30f, 1.0f, 0.0f, 0.70f, 0.0f }, { 0.35f, 0.55f, 0.55f, 3.0f, 0.0f, 0.72f, -1.0f },
-                    { 0.20f, 0.70f, 0.70f, 2.0f, -1.0f, 0.68f, -1.0f }, { 0.30f, 0.65f, 0.80f, 5.0f, 1.0f, 0.72f, -2.0f } };
-                static constexpr float acoustic[4][7] = {
-                    { 0.45f, 0.25f, 0.35f, 1.0f, 0.0f, 0.70f, 0.0f }, { 0.65f, 0.35f, 0.55f, 2.0f, -1.0f, 0.75f, -1.0f },
-                    { 0.30f, 0.70f, 0.80f, 3.0f, 0.0f, 0.65f, -1.0f }, { 0.55f, 0.80f, 0.90f, 4.0f, -2.0f, 0.70f, -2.0f } };
-                static constexpr float keys[4][7] = {
-                    { 0.35f, 0.25f, 0.30f, 0.0f, 1.0f, 0.70f, 0.0f }, { 0.55f, 0.40f, 0.50f, 2.0f, 0.0f, 0.72f, -1.0f },
-                    { 0.25f, 0.65f, 0.65f, 1.0f, 0.0f, 0.70f, -1.0f }, { 0.45f, 0.55f, 0.75f, 3.0f, -1.0f, 0.75f, -2.0f } };
-                const int idx = juce::jlimit (0, 3, presetIndex - 1);
-                const float* v = category == "BASS ENHANCER" ? bass[idx]
-                                  : category == "GUITAR ENHANCER" ? guitar[idx]
-                                  : category == "ACOUSTIC GUITAR ENHANCER" ? acoustic[idx] : keys[idx];
-                setPresetValue ("BODY", v[0]); setPresetValue ("DETAIL", v[1]);
-                setPresetValue ("HARMONICS", v[2]); setPresetValue ("ATTACK", v[3]);
-                setPresetValue ("SUSTAIN", v[4]); setPresetValue ("MIX", v[5]);
-                setPresetValue ("LEVEL", v[6]);
-            }
             else if (category == "TONE SCULPTOR" && presetIndex > 0)
             {
-                static constexpr float values[4][6] = {
-                    { 2.0f, 4.0f, 3.0f, -1.0f, 1.0f, -1.0f },
-                    { 3.0f, 7.0f, -1.0f, 3.0f, 1.0f, -1.0f },
-                    { 4.0f, 4.5f, 5.0f, 0.0f, 1.0f, -1.0f },
-                    { 6.0f, 6.5f, 1.0f, 4.0f, 0.90f, -2.0f } };
+                // STYLE now included since the Diode/Hard styles absorbed
+                // from Saturator give each preset a genuinely different
+                // clipping character, not just different EQ/drive amounts.
+                static constexpr float values[4][7] = {
+                    { 2.0f, 4.0f, 3.0f, -1.0f, 1.0f, -1.0f, 1.0f }, // Warm -> Tape
+                    { 3.0f, 7.0f, -1.0f, 3.0f, 1.0f, -1.0f, 3.0f }, // Bright -> Edge
+                    { 4.0f, 4.5f, 5.0f, 0.0f, 1.0f, -1.0f, 2.0f },  // Body -> Console
+                    { 6.0f, 6.5f, 1.0f, 4.0f, 0.90f, -2.0f, 4.0f }  // Modern -> Diode
+                };
                 const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
                 setPresetValue ("DRIVE", v[0]); setPresetValue ("TONE", v[1]);
                 setPresetValue ("BODY", v[2]); setPresetValue ("AIR", v[3]);
                 setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
+                setPresetValue ("STYLE", v[6]);
             }
             else if (category == "AMPSIM" && presetIndex > 0)
             {
@@ -857,6 +886,99 @@ private:
                 setPresetValue ("THRESHOLD", threshold[idx]); setPresetValue ("RATIO", ratio[idx]);
                 setPresetValue ("ATTACK", attack[idx]); setPresetValue ("RELEASE", release[idx]);
                 setPresetValue ("MAKEUP", makeup[idx]); setPresetValue ("MODE", mode[idx]);
+            }
+            else if (category == "BASS ENHANCER" && presetIndex > 0)
+            {
+                // focus, harmonics, tight, mix, level
+                static constexpr float values[4][5] = {
+                    { 150.0f, 7.0f, 3.0f, 0.75f, 1.0f },  // Small Speaker: max harmonics for translation
+                    { 100.0f, 3.0f, 2.0f, 0.50f, 0.0f },  // Studio: subtle, trust the monitors
+                    { 130.0f, 4.0f, 7.0f, 0.65f, 0.0f },  // Pick Clarity: tightens up between notes fast
+                    { 160.0f, 6.0f, 5.0f, 0.70f, 1.0f }   // Modern: pushed across the board
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("FOCUS", v[0]); setPresetValue ("HARMONICS", v[1]);
+                setPresetValue ("TIGHT", v[2]); setPresetValue ("MIX", v[3]); setPresetValue ("LEVEL", v[4]);
+            }
+            else if (category == "GUITAR ENHANCER" && presetIndex > 0)
+            {
+                // clarity, presence, mix, level
+                static constexpr float values[4][4] = {
+                    { 7.0f, 3.0f, 0.80f, 0.0f },  // Mix Clarity: dig the mud out
+                    { 8.0f, 2.0f, 0.85f, -1.0f }, // Strum Control: heavy adaptive cut for dense chords
+                    { 3.0f, 7.0f, 0.70f, 0.0f },  // Lead Cut: presence-forward for single-note lines
+                    { 5.0f, 5.0f, 0.75f, 0.5f }   // Live: balanced, a bit more level for the room
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("CLARITY", v[0]); setPresetValue ("PRESENCE", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "KEYS ENHANCER" && presetIndex > 0)
+            {
+                // shimmer, width, mix, level
+                static constexpr float values[4][4] = {
+                    { 3.0f, 8.0f, 0.85f, 0.0f },  // Wide Pad: width-forward for sustained pads
+                    { 2.0f, 2.0f, 0.60f, 0.0f },  // Tight Comp: minimal, keeps things centered/mono-safe
+                    { 8.0f, 4.0f, 0.75f, 0.5f },  // Airy: shimmer-forward
+                    { 6.0f, 6.0f, 0.80f, 0.0f }   // Lush: both pushed
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("SHIMMER", v[0]); setPresetValue ("WIDTH", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "ACOUSTIC GUITAR ENHANCER" && presetIndex > 0)
+            {
+                // debox, sparkle, mix, level
+                static constexpr float values[4][4] = {
+                    { 4.0f, 3.0f, 0.65f, 0.0f },  // Studio: gentle, already well-mic'd
+                    { 8.0f, 4.0f, 0.80f, 0.5f },  // Live Strum: heavy debox for a boomy stage mic
+                    { 3.0f, 6.0f, 0.70f, 0.0f },  // Fingerstyle: sparkle-forward, minimal debox
+                    { 5.0f, 8.0f, 0.75f, 0.5f }   // Bright: both pushed
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("DEBOX", v[0]); setPresetValue ("SPARKLE", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "CASSETTE EMULATION" && presetIndex > 0)
+            {
+                // type, wow, dolby, hiss, mix, level
+                static constexpr float values[4][6] = {
+                    { 1.0f, 3.0f, 4.0f, 2.0f, 0.85f, 0.0f },  // Mixtape: chrome, clean-ish but present
+                    { 0.0f, 7.0f, 6.0f, 7.0f, 1.0f, -1.0f },  // Lo-Fi Boombox: ferric, worn out
+                    { 1.0f, 5.0f, 5.0f, 4.0f, 0.90f, 0.0f },  // Walkman: chrome, moderate wobble
+                    { 0.0f, 8.0f, 3.0f, 8.0f, 1.0f, -2.0f }   // Demo 4-Track: ferric, hissy and loose
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("TYPE", v[0]); setPresetValue ("WOW", v[1]);
+                setPresetValue ("DOLBY", v[2]); setPresetValue ("HISS", v[3]);
+                setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
+            }
+            else if (category == "VOCAL ENHANCER" && presetIndex > 0)
+            {
+                // warmth, air, mix, level
+                static constexpr float values[4][4] = {
+                    { 5.0f, 4.0f, 0.75f, 0.0f },  // Podcast: fuller voiced content, controlled air
+                    { 4.0f, 5.0f, 0.70f, 0.0f },  // Lead Vocal: balanced
+                    { 2.0f, 8.0f, 0.80f, 0.5f },  // Breathy: air-forward, minimal warmth
+                    { 6.0f, 3.0f, 0.65f, 0.0f }   // Broadcast: warm, controlled top end
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("WARMTH", v[0]); setPresetValue ("AIR", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "DRUM ENHANCER" && presetIndex > 0)
+            {
+                // crossover, punch, sub, crack, mix, level
+                static constexpr float values[4][6] = {
+                    { 500.0f, 3.0f, 5.0f, 1.0f, 0.55f, 0.0f },  // Tight Kick: sub-forward, minimal top
+                    { 700.0f, 5.0f, 2.0f, 6.0f, 0.65f, 0.5f },  // Trap: crack-forward 808-style click
+                    { 550.0f, 6.0f, 4.0f, 5.0f, 0.60f, 0.0f },  // Rock: balanced punch across the kit
+                    { 450.0f, 8.0f, 7.0f, 8.0f, 0.80f, -1.0f }  // Smash: everything pushed hard
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("CROSSOVER", v[0]); setPresetValue ("PUNCH", v[1]);
+                setPresetValue ("SUB", v[2]); setPresetValue ("CRACK", v[3]);
+                setPresetValue ("MIX", v[4]); setPresetValue ("LEVEL", v[5]);
             }
             else if (category == "MULTIBAND DRIVE" && presetIndex > 0)
             {

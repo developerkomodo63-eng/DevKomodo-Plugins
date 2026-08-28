@@ -9,29 +9,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout DrumEnhancerAudioProcessor::
         juce::ParameterID { "CROSSOVER", 1 }, "Crossover",
         juce::NormalisableRange<float> { 200.0f, 2000.0f, 0.0f, 0.4f }, 600.0f));
 
+    // Dynamic low-band boost, scaled by how strong the detected transient
+    // is right now -- silent between hits, present on the attack.
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "LOWDRIVE", 1 }, "Low Process", 0.0f, 1.0f, 0.4f));
+        juce::ParameterID { "PUNCH", 1 }, "Punch", 0.0f, 10.0f, 4.0f));
+
+    // Synthesized sub layer: the low band, filtered much harder and
+    // saturated, for real low-end weight rather than just "more bass".
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "SUB", 1 }, "Sub", 0.0f, 10.0f, 3.0f));
+
+    // High-band harmonic excitement, gated by the transient so cymbal/
+    // hihat sustain doesn't pick up constant grit -- only the attack does.
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "CRACK", 1 }, "Crack", 0.0f, 10.0f, 4.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "HIGHDRIVE", 1 }, "High Process", 0.0f, 1.0f, 0.4f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "ATTACK", 1 }, "Attack", -12.0f, 12.0f, 3.0f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "SUSTAIN", 1 }, "Sustain", -12.0f, 12.0f, -1.0f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "SNAP", 1 }, "Snap", 0.0f, 1.0f, 0.35f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "SUB", 1 }, "Sub", 0.0f, 1.0f, 0.25f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "PUNCH", 1 }, "Punch", 0.0f, 1.0f, 0.45f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 0.5f));
+        juce::ParameterID { "MIX", 1 }, "Mix", 0.0f, 1.0f, 0.6f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "LEVEL", 1 }, "Level", -12.0f, 12.0f, 0.0f));
@@ -59,46 +53,36 @@ DrumEnhancerAudioProcessor::~DrumEnhancerAudioProcessor()
 
 void DrumEnhancerAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    fastEnvelope = slowEnvelope = 0.0f;
-    subPhase = subEnvelope = previousTransient = 0.0f;
-    fastAttackCoeff  = std::exp (-1.0f / (0.0005f * (float) sampleRate));
-    fastReleaseCoeff = std::exp (-1.0f / (0.050f  * (float) sampleRate));
-    slowAttackCoeff  = std::exp (-1.0f / (0.030f  * (float) sampleRate));
-    slowReleaseCoeff = std::exp (-1.0f / (0.300f  * (float) sampleRate));
-    attackSmoothed.reset (sampleRate, 0.02);
-    sustainSmoothed.reset (sampleRate, 0.02);
-    snapSmoothed.reset (sampleRate, 0.02);
-    subSmoothed.reset (sampleRate, 0.02);
-    punchSmoothed.reset (sampleRate, 0.02);
-    attackSmoothed.setCurrentAndTargetValue (3.0f);
-    sustainSmoothed.setCurrentAndTargetValue (-1.0f);
-    snapSmoothed.setCurrentAndTargetValue (0.35f);
-    subSmoothed.setCurrentAndTargetValue (0.25f);
-    punchSmoothed.setCurrentAndTargetValue (0.45f);
-    attackBuffer.assign ((size_t) samplesPerBlock, 3.0f);
-    sustainBuffer.assign ((size_t) samplesPerBlock, -1.0f);
-    snapBuffer.assign ((size_t) samplesPerBlock, 0.35f);
-    subBuffer.assign ((size_t) samplesPerBlock, 0.25f);
-    punchBuffer.assign ((size_t) samplesPerBlock, 0.45f);
-    attackWeightBuffer.assign ((size_t) samplesPerBlock, 0.0f);
-    transientGainBuffer.assign ((size_t) samplesPerBlock, 1.0f);
-
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
     spec.maximumBlockSize = (juce::uint32) samplesPerBlock;
     spec.numChannels = 1;
 
     const int numChannels = juce::jmax (1, getTotalNumOutputChannels());
-    subState.assign ((size_t) numChannels, 0.0f);
-    splits.resize ((size_t) numChannels);
-    for (auto& s : splits)
+    channels.resize ((size_t) numChannels);
+    for (auto& c : channels)
     {
-        s.lowLP.prepare (spec);
-        s.highHP.prepare (spec);
-        s.lowLP.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
-        s.highHP.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
-        s.reset();
+        c.lowLP.prepare (spec);
+        c.highHP.prepare (spec);
+        c.subLP.prepare (spec);
+        c.lowLP.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
+        c.highHP.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
+        // Fixed hard lowpass for the synthesized sub layer -- this stays
+        // well below the adjustable crossover on purpose, it's meant to
+        // isolate just the "boom" fundamental, not track the Crossover knob.
+        c.subLP.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, 90.0f, 0.707f);
+        c.reset();
     }
+
+    // Transient envelope pair: a fast follower that jumps up almost
+    // instantly on a hit, and a slow follower that tracks the recent
+    // "steady" loudness. The gap between them (fast minus slow) is the
+    // transient-detection signal every dynamic parameter below reacts to.
+    const auto sr = (float) sampleRate;
+    fastAttackCoeff  = std::exp (-1.0f / (0.0008f * sr));   // ~0.8ms
+    fastReleaseCoeff = std::exp (-1.0f / (0.030f  * sr));   // ~30ms
+    slowAttackCoeff  = std::exp (-1.0f / (0.060f  * sr));   // ~60ms
+    slowReleaseCoeff = std::exp (-1.0f / (0.350f  * sr));   // ~350ms
 }
 
 void DrumEnhancerAudioProcessor::releaseResources()
@@ -138,115 +122,70 @@ void DrumEnhancerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int totalNumInputChannels  = getTotalNumInputChannels();
     const int totalNumOutputChannels = getTotalNumOutputChannels();
-    const int processChannels = juce::jmin (totalNumInputChannels, totalNumOutputChannels);
     const int numSamples = buffer.getNumSamples();
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, numSamples);
 
     const float crossover = apvts.getRawParameterValue ("CROSSOVER")->load();
-    const float lowDrive  = apvts.getRawParameterValue ("LOWDRIVE")->load();
-    const float highDrive = apvts.getRawParameterValue ("HIGHDRIVE")->load();
-    const float attackDb  = apvts.getRawParameterValue ("ATTACK")->load();
-    const float sustainDb = apvts.getRawParameterValue ("SUSTAIN")->load();
-    const float snap       = apvts.getRawParameterValue ("SNAP")->load();
-    const float sub        = apvts.getRawParameterValue ("SUB")->load();
-    const float punch      = apvts.getRawParameterValue ("PUNCH")->load();
-    const float mix       = apvts.getRawParameterValue ("MIX")->load();
-    const float levelDb   = apvts.getRawParameterValue ("LEVEL")->load();
+    const float punchNorm = apvts.getRawParameterValue ("PUNCH")->load() / 10.0f;
+    const float subNorm   = apvts.getRawParameterValue ("SUB")->load()   / 10.0f;
+    const float crackNorm = apvts.getRawParameterValue ("CRACK")->load() / 10.0f;
+    const float mix        = apvts.getRawParameterValue ("MIX")->load();
+    const float levelDb    = apvts.getRawParameterValue ("LEVEL")->load();
     const float outputGain = juce::Decibels::decibelsToGain (levelDb);
 
-    attackSmoothed.setTargetValue (attackDb);
-    sustainSmoothed.setTargetValue (sustainDb);
-    snapSmoothed.setTargetValue (snap);
-    subSmoothed.setTargetValue (sub);
-    punchSmoothed.setTargetValue (punch);
-
-    if (numSamples > (int) attackBuffer.size()) attackBuffer.resize ((size_t) numSamples, attackDb);
-    if (numSamples > (int) sustainBuffer.size()) sustainBuffer.resize ((size_t) numSamples, sustainDb);
-    if (numSamples > (int) snapBuffer.size()) snapBuffer.resize ((size_t) numSamples, snap);
-    if (numSamples > (int) subBuffer.size()) subBuffer.resize ((size_t) numSamples, sub);
-    if (numSamples > (int) punchBuffer.size()) punchBuffer.resize ((size_t) numSamples, punch);
-    if (numSamples > (int) attackWeightBuffer.size()) attackWeightBuffer.resize ((size_t) numSamples, 0.0f);
-    if (numSamples > (int) transientGainBuffer.size()) transientGainBuffer.resize ((size_t) numSamples, 1.0f);
-    for (int sample = 0; sample < numSamples; ++sample)
+    for (auto& c : channels)
     {
-        attackBuffer[(size_t) sample] = attackSmoothed.getNextValue();
-        sustainBuffer[(size_t) sample] = sustainSmoothed.getNextValue();
-        snapBuffer[(size_t) sample] = snapSmoothed.getNextValue();
-        subBuffer[(size_t) sample] = subSmoothed.getNextValue();
-        punchBuffer[(size_t) sample] = punchSmoothed.getNextValue();
+        c.lowLP.setCutoffFrequency (crossover);
+        c.highHP.setCutoffFrequency (crossover);
     }
 
-    for (auto& s : splits)
-    {
-        s.lowLP.setCutoffFrequency (crossover);
-        s.highHP.setCutoffFrequency (crossover);
-    }
-
-    // cuanto mas alto el drive, mas ganancia interna antes de saturar
-    // (rango pensado para armonicos sutiles, no para distorsion audible)
-    const float lowGainStage  = 1.0f + lowDrive * 5.0f;
-    const float highGainStage = 1.0f + highDrive * 5.0f;
-
-    for (int sample = 0; sample < numSamples; ++sample)
-    {
-        float detectorInput = 0.0f;
-        for (int detectorChannel = 0; detectorChannel < processChannels; ++detectorChannel)
-            detectorInput = juce::jmax (detectorInput,
-                                        std::abs (buffer.getReadPointer (detectorChannel)[sample]));
-        const float fastCoeff = (detectorInput > fastEnvelope) ? fastAttackCoeff : fastReleaseCoeff;
-        fastEnvelope = detectorInput + fastCoeff * (fastEnvelope - detectorInput);
-        const float slowCoeff = (detectorInput > slowEnvelope) ? slowAttackCoeff : slowReleaseCoeff;
-        slowEnvelope = detectorInput + slowCoeff * (slowEnvelope - detectorInput);
-        const float attackWeight = juce::jlimit (0.0f, 1.0f,
-            (fastEnvelope - slowEnvelope) * 24.0f);
-        if (attackWeight > 0.55f && attackWeight > previousTransient + 0.04f)
-            subEnvelope = 1.0f;
-        previousTransient = attackWeight;
-        const float subDecay = std::exp (-1.0f / (0.115f * (float) getSampleRate()));
-        subEnvelope *= subDecay;
-        subPhase += juce::MathConstants<float>::twoPi * 55.0f / (float) getSampleRate();
-        if (subPhase >= juce::MathConstants<float>::twoPi)
-            subPhase -= juce::MathConstants<float>::twoPi;
-        const float transientGainDb = attackWeight * attackBuffer[(size_t) sample]
-                                    + (1.0f - attackWeight) * sustainBuffer[(size_t) sample];
-        attackWeightBuffer[(size_t) sample] = attackWeight;
-        transientGainBuffer[(size_t) sample] = juce::Decibels::decibelsToGain (transientGainDb);
-    }
-
-    for (int channel = 0; channel < processChannels; ++channel)
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         float* channelData = buffer.getWritePointer (channel);
-        auto& s = splits[(size_t) channel];
+        auto& c = channels[(size_t) channel];
 
         for (int sample = 0; sample < numSamples; ++sample)
         {
             const float dry = channelData[sample];
-            const float attackWeight = attackWeightBuffer[(size_t) sample];
-            const float transientGain = transientGainBuffer[(size_t) sample];
+            const float absDry = std::abs (dry);
 
-            const float low  = s.lowLP.processSample (0, dry);
-            const float high = s.highHP.processSample (0, dry);
+            // Transient envelope: fast follower jumps on the hit, slow
+            // follower tracks the recent average. The (fast - slow) gap,
+            // normalised against the recent level, spikes to ~1 right at
+            // a hit and decays back to ~0 during sustain/silence.
+            const float fastCoeff = (absDry > c.fastEnv) ? fastAttackCoeff : fastReleaseCoeff;
+            c.fastEnv = absDry + fastCoeff * (c.fastEnv - absDry);
+            const float slowCoeff = (absDry > c.slowEnv) ? slowAttackCoeff : slowReleaseCoeff;
+            c.slowEnv = absDry + slowCoeff * (c.slowEnv - absDry);
+            const float transient = juce::jlimit (0.0f, 1.0f,
+                (c.fastEnv - c.slowEnv) * 4.0f / juce::jmax (c.slowEnv, 0.02f));
 
-            const float punchAmount = punchBuffer[(size_t) sample];
-            const float subAmount = subBuffer[(size_t) sample];
-            const float punchGain = 1.0f + attackWeight * punchAmount * 0.90f;
-            const float snapGain = 1.0f + attackWeight * snapBuffer[(size_t) sample] * 0.85f;
-            const float lowExcited = std::tanh (low * lowGainStage) / juce::jmax (lowGainStage, 1.0f);
+            const float low  = c.lowLP.processSample (0, dry);
+            const float high = c.highHP.processSample (0, dry);
 
-            auto& subMemory = subState[(size_t) channel];
-            subMemory += (std::abs (low) - subMemory) * 0.035f;
-            const float lowBandEnvelope = juce::jlimit (0.0f, 1.0f, subMemory * 3.0f);
-            const float subHarmonic = low * std::abs (low) * 1.8f * subAmount
-                                    + std::sin (subPhase) * 0.32f * subAmount * subEnvelope * lowBandEnvelope;
+            // PUNCH: extra low-band gain that only appears when there's
+            // an active transient -- silent between hits instead of a
+            // constant static boost.
+            const float punchDrive = 1.0f + punchNorm * transient * 4.0f;
+            const float lowOut = low * (1.0f - punchNorm) + std::tanh (low * punchDrive) * punchNorm;
 
-            const float highExcited = std::tanh (high * highGainStage) / juce::jmax (highGainStage, 1.0f);
+            // SUB: a hard-filtered, saturated low layer for real kick
+            // weight. Always tracks the transient a little too, so it
+            // doesn't just add a static hum under everything.
+            const float subRaw = c.subLP.processSample (low);
+            const float subSat = std::tanh (subRaw * (2.0f + transient * 1.5f));
+            const float subOut = subSat * subNorm;
 
-            const float enhanced = (lowExcited * lowDrive + low * (1.0f - lowDrive) + subHarmonic) * punchGain
-                                  + (highExcited * highDrive + high * (1.0f - highDrive)) * snapGain;
+            // CRACK: high-band excitement gated by the transient, so
+            // cymbal/hihat sustain stays clean and only the attack gets
+            // the extra harmonic snap.
+            const float crackDrive = 1.0f + crackNorm * transient * 6.0f;
+            const float highOut = high * (1.0f - crackNorm) + std::tanh (high * crackDrive) * crackNorm;
 
-            channelData[sample] = (dry * (1.0f - mix) + enhanced * mix) * transientGain * outputGain;
+            const float enhanced = lowOut + subOut + highOut;
+            channelData[sample] = (dry * (1.0f - mix) + enhanced * mix) * outputGain;
         }
     }
 }

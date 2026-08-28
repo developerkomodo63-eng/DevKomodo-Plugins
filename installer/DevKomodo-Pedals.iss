@@ -32,6 +32,7 @@ Name: "delayreverb"; Description: "Delay / Reverb"
 Name: "eq"; Description: "EQ / Tone shaping"
 Name: "texturesynth"; Description: "Texture / Synth"
 Name: "utility"; Description: "Utility"
+Name: "enhancers"; Description: "Instrument Enhancers"
 
 [Files]
 Source: "allvst3\Boost.vst3\*"; DestDir: "{app}\Boost.vst3"; Flags: recursesubdirs; Components: drive
@@ -76,13 +77,19 @@ Source: "allvst3\Glitch Machine.vst3\*"; DestDir: "{app}\Glitch Machine.vst3"; F
 Source: "allvst3\Granulator.vst3\*"; DestDir: "{app}\Granulator.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Vinyl Emulation.vst3\*"; DestDir: "{app}\Vinyl Emulation.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Tape Emulation.vst3\*"; DestDir: "{app}\Tape Emulation.vst3"; Flags: recursesubdirs; Components: texturesynth
+Source: "allvst3\Cassette Emulation.vst3\*"; DestDir: "{app}\Cassette Emulation.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Octaver.vst3\*"; DestDir: "{app}\Octaver.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Synth Guitar.vst3\*"; DestDir: "{app}\Synth Guitar.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Synth Bass.vst3\*"; DestDir: "{app}\Synth Bass.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\DevKomodo Vocal Shifter.vst3\*"; DestDir: "{app}\DevKomodo Vocal Shifter.vst3"; Flags: recursesubdirs; Components: texturesynth
 Source: "allvst3\Utility Gain.vst3\*"; DestDir: "{app}\Utility Gain.vst3"; Flags: recursesubdirs; Components: utility
 Source: "allvst3\Mono Maker.vst3\*"; DestDir: "{app}\Mono Maker.vst3"; Flags: recursesubdirs; Components: utility
-Source: "allvst3\Drum Enhancer.vst3\*"; DestDir: "{app}\Drum Enhancer.vst3"; Flags: recursesubdirs; Components: utility
+Source: "allvst3\Drum Enhancer.vst3\*"; DestDir: "{app}\Drum Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Bass Enhancer.vst3\*"; DestDir: "{app}\Bass Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Guitar Enhancer.vst3\*"; DestDir: "{app}\Guitar Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Keys Enhancer.vst3\*"; DestDir: "{app}\Keys Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Acoustic Guitar Enhancer.vst3\*"; DestDir: "{app}\Acoustic Guitar Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Vocal Enhancer.vst3\*"; DestDir: "{app}\Vocal Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

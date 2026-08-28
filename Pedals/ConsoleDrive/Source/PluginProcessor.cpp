@@ -113,15 +113,13 @@ void ConsoleDriveAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             const float in = data[i];
             const float smoothedDrive = driveBuffer[(size_t) i];
             const float smoothedMix = mixBuffer[(size_t) i];
-            // Console drive keeps transients intact while rounding the low band
-            // more than the high band, like a transformer and channel strip.
+            // Console drive is intentionally subtle: low-frequency energy is
+            // compressed a little more and the tone control is a true spectral
+            // tilt, rather than a post-saturation volume multiplier.
             low += (in - low) * lowCoeff;
             const float high = in - low;
-            const float lowRounded = low / (1.0f + smoothedDrive * 0.55f * std::abs (low));
-            const float highRounded = high / (1.0f + smoothedDrive * 0.16f * std::abs (high));
-            const float driven = lowRounded * (1.0f + smoothedDrive * 1.55f)
-                               + highRounded * (1.0f + smoothedDrive * 2.15f);
-            float shaped = driven / (1.0f + 0.18f * std::abs (driven));
+            const float driven = low * (1.0f + smoothedDrive * 1.8f) + high * (1.0f + smoothedDrive * 2.4f);
+            float shaped = driven / (1.0f + 0.22f * std::abs (driven));
             shaped += toneTilt * (high * 0.35f - low * 0.10f);
             // Was previously a pure serial effect with no way to blend back
             // in the dry signal -- MIX now allows parallel/New-York-style

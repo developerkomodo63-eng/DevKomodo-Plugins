@@ -1,4 +1,4 @@
-juce_add_plugin(GuitarEnhancer
+juce_add_plugin(CassetteEmulation
     COMPANY_NAME                "DevKomodo"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
@@ -6,24 +6,24 @@ juce_add_plugin(GuitarEnhancer
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     PLUGIN_MANUFACTURER_CODE    Manu
-    PLUGIN_CODE                 GtEn
+    PLUGIN_CODE                 CasS
     FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
-    PRODUCT_NAME                "Guitar Enhancer")
+    PRODUCT_NAME                "Cassette Emulation")
 
-target_sources(GuitarEnhancer
+target_sources(CassetteEmulation
     PRIVATE
         Source/PluginProcessor.cpp)
 
-juce_generate_juce_header(GuitarEnhancer)
+juce_generate_juce_header(CassetteEmulation)
 
-target_compile_definitions(GuitarEnhancer
+target_compile_definitions(CassetteEmulation
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_link_libraries(GuitarEnhancer
+target_link_libraries(CassetteEmulation
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp

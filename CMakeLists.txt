@@ -39,6 +39,6 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(JUCE)
 
-# Only build the wavetable synth target for now.
+# Build only WaveformSynth and do not add any other pedal targets here.
 add_subdirectory(Pedals/WaveformSynth)
 

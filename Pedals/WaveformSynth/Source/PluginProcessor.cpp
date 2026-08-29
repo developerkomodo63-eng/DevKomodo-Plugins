@@ -764,7 +764,9 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float resonanceAmount = juce::jlimit (0.0f, 1.0f, resonance);
     const float unisonDepth = juce::jlimit (0.0f, 1.0f, unison);
 
-    for (int channel = 0; channel < numChannels; ++channel)
+    // Advance each voice once per sample. Processing the voice once per output
+    // channel doubles the oscillator rate and envelope speed in stereo.
+    for (int channel = 0; channel < juce::jmin (1, numChannels); ++channel)
     {
         float* channelData = buffer.getWritePointer (channel);
         for (int sample = 0; sample < numSamples; ++sample)
@@ -802,9 +804,9 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 const float oscAPhaseShift = oscAPhase * 0.75f;
                 const float oscBPhaseShift = oscBPhase * 0.75f;
                 const float syncAmount = juce::jlimit (0.0f, 1.0f, oscSync);
-                const float oscASync = wavetableSample (stereoPhase + oscAPhaseShift, juce::jlimit (0.0f, 1.0f, oscAMorph + syncAmount * 0.25f) + oscAIndex * 0.04f, driftedDetune * 0.07f, oscABank) * 0.75f;
-                const float oscBSync = wavetableSample (stereoPhase + 0.18f + oscBPhaseShift + spread * 0.12f, juce::jlimit (0.0f, 1.0f, oscBMorph + syncAmount * 0.28f) + oscBIndex * 0.05f, (driftedDetune + 0.8f) * 0.10f, oscBBank) * 0.72f;
-                const float unisonOsc = wavetableSample (stereoPhase + 0.15f + oscAPhaseShift + spread * 0.10f, oscAMorph + oscAIndex * 0.05f, (driftedDetune + 0.5f) * 0.10f, oscABank) * (0.30f * unisonDepth);
+                const float oscASync = wavetableSample (stereoPhase + oscAPhaseShift, juce::jlimit (0.0f, 1.0f, oscAIndex / (float) (wavetableCount - 1) + syncAmount * 0.025f), driftedDetune * 0.07f, oscABank) * 0.75f;
+                const float oscBSync = wavetableSample (stereoPhase + 0.18f + oscBPhaseShift + spread * 0.12f, juce::jlimit (0.0f, 1.0f, oscBIndex / (float) (wavetableCount - 1) + syncAmount * 0.028f), (driftedDetune + 0.8f) * 0.10f, oscBBank) * 0.72f;
+                const float unisonOsc = wavetableSample (stereoPhase + 0.15f + oscAPhaseShift + spread * 0.10f, oscAIndex / (float) (wavetableCount - 1), (driftedDetune + 0.5f) * 0.10f, oscABank) * (0.30f * unisonDepth);
                 const float subOsc = std::sin (voice.phase * juce::MathConstants<float>::twoPi * 0.5f) * (0.42f * subLevel);
                 const float noiseTone = std::sin (voice.phase * 131.0f + (float) sample * 0.31f) * noiseAmount * 0.22f;
                 float osc = (oscASync * (1.0f - mix)) + (oscBSync * mix) + unisonOsc + subOsc + noiseTone;
@@ -869,6 +871,9 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             channelData[sample] = finalSample;
         }
     }
+
+    for (int channel = 1; channel < numChannels; ++channel)
+        buffer.copyFrom (channel, 0, buffer, 0, 0, numSamples);
 }
 
 void WaveformSynthAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

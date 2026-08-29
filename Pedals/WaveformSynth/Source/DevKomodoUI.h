@@ -4,14 +4,16 @@
 
 class WaveformSynthAudioProcessor;
 
-class WaveformSynthEditor final : public juce::AudioProcessorEditor
+class WaveformSynthEditor final : public juce::AudioProcessorEditor,
+                                  private juce::Timer
 {
 public:
     WaveformSynthEditor (WaveformSynthAudioProcessor& p, juce::AudioProcessorValueTreeState& state)
         : AudioProcessorEditor (&p), processor (p), apvts (state)
     {
         setOpaque (true);
-        setSize (1080, 1040);
+        setSize (1080, 800);
+        startTimerHz (30);
 
         title.setText ("WAVEFORM SYNTH", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
@@ -287,8 +289,10 @@ public:
             g.strokePath (path, juce::PathStrokeType (1.5f));
         };
 
-        drawWaveform (juce::Colour::fromRGB (91, 208, 190), 0.12f, 1);
-        drawWaveform (juce::Colour::fromRGB (255, 166, 92), 0.32f, 2);
+        const auto oscAWaveform = (int) apvts.getRawParameterValue ("OSC_A_WAVEFORM")->load();
+        const auto oscBWaveform = (int) apvts.getRawParameterValue ("OSC_B_WAVEFORM")->load();
+        drawWaveform (juce::Colour::fromRGB (91, 208, 190), 0.12f, oscAWaveform);
+        drawWaveform (juce::Colour::fromRGB (255, 166, 92), 0.32f, oscBWaveform);
     }
 
     void resized() override
@@ -296,10 +300,10 @@ public:
         title.setBounds (20, 18, getWidth() - 40, 30);
         subtitle.setBounds (30, 54, getWidth() - 60, 16);
 
-        const int cols = 5;
+        const int cols = 6;
         const int gap = 12;
         const int knobWidth = (getWidth() - 120) / cols;
-        const int knobHeight = 120;
+        const int knobHeight = 105;
         const int knobStartY = 170;
 
         if (presetCombo != nullptr)
@@ -331,6 +335,11 @@ public:
             const int y = knobStartY + (i / cols) * (knobHeight + 18);
             sliders[(size_t) i]->setBounds (x, y, knobWidth - 12, knobHeight);
         }
+    }
+
+    void timerCallback() override
+    {
+        repaint (22, 72, getWidth() - 44, 68);
     }
 
 private:

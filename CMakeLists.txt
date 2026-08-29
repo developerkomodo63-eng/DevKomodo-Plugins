@@ -39,12 +39,6 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(JUCE)
 
-# Build all plugin targets in the Pedals directory.
-file(GLOB DEVKOMODO_PEDAL_DIRS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/Pedals" "${CMAKE_CURRENT_SOURCE_DIR}/Pedals/*")
-foreach(pedal_dir IN LISTS DEVKOMODO_PEDAL_DIRS)
-    set(pedal_path "${CMAKE_CURRENT_SOURCE_DIR}/Pedals/${pedal_dir}")
-    if(IS_DIRECTORY "${pedal_path}" AND EXISTS "${pedal_path}/CMakeLists.txt")
-        add_subdirectory("${pedal_path}")
-    endif()
-endforeach()
+# Build only the active plugin target.
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Pedals/WaveformSynth")
 

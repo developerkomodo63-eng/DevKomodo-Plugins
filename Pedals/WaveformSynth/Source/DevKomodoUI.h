@@ -11,7 +11,7 @@ public:
         : AudioProcessorEditor (&p), processor (p), apvts (state)
     {
         setOpaque (true);
-        setSize (980, 600);
+        setSize (1080, 1040);
 
         title.setText ("WAVEFORM SYNTH", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
@@ -255,6 +255,40 @@ public:
 
         g.setColour (juce::Colours::white.withAlpha (0.06f));
         g.fillRoundedRectangle (juce::Rectangle<float> (22.0f, 72.0f, getWidth() - 44.0f, 68.0f), 10.0f);
+
+        const auto waveformArea = juce::Rectangle<float> (28.0f, 104.0f, getWidth() - 56.0f, 28.0f);
+        const auto drawWaveform = [&g, waveformArea] (juce::Colour colour, float phase, int waveform)
+        {
+            juce::Path path;
+            constexpr int points = 160;
+
+            for (int i = 0; i < points; ++i)
+            {
+                const auto normalisedX = (float) i / (float) (points - 1);
+                const auto angle = juce::MathConstants<float>::twoPi * (normalisedX + phase);
+                float value = std::sin (angle);
+
+                if (waveform == 1)
+                    value = 2.0f * (normalisedX - std::floor (normalisedX + 0.5f));
+                else if (waveform == 2)
+                    value = std::sin (angle) >= 0.0f ? 1.0f : -1.0f;
+                else if (waveform == 3)
+                    value = 1.0f - 4.0f * std::abs (std::round (normalisedX) - normalisedX);
+
+                const auto point = juce::Point<float> (waveformArea.getX() + normalisedX * waveformArea.getWidth(),
+                                                       waveformArea.getCentreY() - value * waveformArea.getHeight() * 0.42f);
+                if (i == 0)
+                    path.startNewSubPath (point);
+                else
+                    path.lineTo (point);
+            }
+
+            g.setColour (colour);
+            g.strokePath (path, juce::PathStrokeType (1.5f));
+        };
+
+        drawWaveform (juce::Colour::fromRGB (91, 208, 190), 0.12f, 1);
+        drawWaveform (juce::Colour::fromRGB (255, 166, 92), 0.32f, 2);
     }
 
     void resized() override
@@ -281,7 +315,7 @@ public:
         if (filterModeCombo != nullptr)
             filterModeCombo->setBounds (800, 82, 110, 30);
         if (voiceModeCombo != nullptr)
-            voiceModeCombo->setBounds (920, 82, 110, 30);
+            voiceModeCombo->setBounds (920, 82, 125, 30);
 
         userPresetName.setBounds (28, 122, 170, 28);
         if (savePresetButton != nullptr)

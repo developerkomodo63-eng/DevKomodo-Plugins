@@ -47,8 +47,40 @@ inline juce::String parameterTooltip (const juce::String& parameterID,
         return "Adjusts the midrange weight and focus.";
     if (id.contains ("TREBLE") || id.contains ("HIGH") || id.contains ("AIR") || id.contains ("PRESENCE"))
         return "Adjusts high-frequency clarity and presence.";
-    if (id.contains ("BIAS") || id.contains ("CHARACTER"))
+    if (id.contains ("PAN") || id.contains ("BALANCE"))
+        return "Places the signal in the stereo field for a wider or more centred response.";
+    if (id.contains ("CROSSOVER") || id.contains ("CENTER") || id.contains ("SPREAD"))
+        return "Sets how the effect splits or distributes energy across the spectrum or stereo field.";
+    if (id == "BIAS")
+        return "Shifts the nonlinear response toward a softer asymmetry or a more aggressive edge; useful for warm, rounded saturation or sharper clipping.";
+    if (id == "WAVE_MORPH")
+        return "Morphs the oscillator texture between a softer and a more aggressive waveform character, making the sound feel more organic or more synthetic.";
+    if (id == "TRANSIENT")
+        return "Shapes the leading edge of the signal for more pick attack, tighter plucks, or a smoother, less abrupt response.";
+    if (id.contains ("CHARACTER"))
         return "Changes the symmetry and character of the nonlinear response.";
+    if (id.contains ("DRIFT") || id.contains ("JITTER") || id.contains ("WOBBLE"))
+        return "Adds slow, musical movement that keeps the sound from feeling too static.";
+    if (id.contains ("SCOOP") || id.contains ("TILT") || id.contains ("FOCUS"))
+        return "Shifts the tonal balance toward a more sculpted midrange or a more open response.";
+    if (id.contains ("CUTOFF") || id.contains ("FREQ") || id.contains ("FILTER"))
+        return "Sets the frequency point where the filter starts shaping the spectrum.";
+    if (id.contains ("RESONANCE") || id.contains ("Q"))
+        return "Boosts the filter peak at the cutoff point for more bite, body, or sharper emphasis.";
+    if (id.contains ("GLIDE") || id.contains ("PORTAMENTO"))
+        return "Sets how smoothly notes move from one frequency to the next, which helps the sound feel more expressive and less abrupt.";
+    if (id.contains ("GATE") || id.contains ("NOISE") && id.contains ("GATE"))
+        return "Sets how strongly quiet or unwanted signal is reduced.";
+    if (id.contains ("NOISE") || id.contains ("HISS") || id.contains ("CRACKLE"))
+        return "Adds or removes texture, grit, or background noise for a more organic or lo-fi character.";
+    if (id.contains ("PAN") || id.contains ("BALANCE"))
+        return "Sets the position of the signal in the stereo field for a wider or more centered response.";
+    if (id.contains ("RATIO") || id.contains ("THRESH") || id.contains ("KNEE"))
+        return "Controls how aggressively the processor reacts above the threshold, which strongly affects the feel of compression or limiting.";
+    if (id.contains ("ATTACK") || id.contains ("RELEASE") || id.contains ("DECAY"))
+        return "Sets the speed of the response: tighter and faster for punch, slower for a smoother and more natural feel.";
+    if (id.contains ("GAIN") || id.contains ("LEVEL") || id.contains ("OUTPUT"))
+        return "Sets the overall strength of the signal after the effect stage; useful for balancing and keeping the output musical.";
     if (id.contains ("GATE"))
         return "Sets how strongly quiet or unwanted signal is reduced.";
 

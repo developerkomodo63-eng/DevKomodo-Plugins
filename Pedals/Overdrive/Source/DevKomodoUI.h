@@ -655,6 +655,8 @@ private:
         else if (category.contains ("KEYS ENHANCER")) names = juce::StringArray { "INIT", "WIDE PAD", "TIGHT COMP", "AIRY", "LUSH" };
         else if (category.contains ("ACOUSTIC GUITAR ENHANCER")) names = juce::StringArray { "INIT", "STUDIO", "LIVE STRUM", "FINGERSTYLE", "BRIGHT" };
         else if (category.contains ("VOCAL ENHANCER")) names = juce::StringArray { "INIT", "PODCAST", "LEAD VOCAL", "BREATHY", "BROADCAST" };
+        else if (category.contains ("STRING ENHANCER")) names = juce::StringArray { "INIT", "SOLO", "ENSEMBLE", "AGGRESSIVE", "CHAMBER" };
+        else if (category.contains ("ROOM ENHANCER")) names = juce::StringArray { "INIT", "PODCAST", "UNTREATED ROOM", "LIVE VOCAL", "DEAD" };
         else if (category.contains ("CASSETTE EMULATION")) names = juce::StringArray { "INIT", "MIXTAPE", "LO-FI BOOMBOX", "WALKMAN", "DEMO 4-TRACK" };
         else if (category.contains ("AMPSIM")) names = juce::StringArray { "INIT", "CLEAN", "CRUNCH", "LEAD", "MODERN" };
 
@@ -899,6 +901,32 @@ private:
                 };
                 const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
                 setPresetValue ("WARMTH", v[0]); setPresetValue ("AIR", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "STRING ENHANCER" && presetIndex > 0)
+            {
+                // bloom, smooth, mix, level
+                static constexpr float values[4][4] = {
+                    { 3.0f, 3.0f, 0.60f, 0.0f },  // Solo: light touch
+                    { 5.0f, 6.0f, 0.75f, 0.0f },  // Ensemble: more bloom, more shriek control
+                    { 2.0f, 8.0f, 0.70f, 0.0f },  // Aggressive: minimal bloom, heavy smoothing
+                    { 7.0f, 4.0f, 0.80f, 0.5f }   // Chamber: bloom-forward, roomy
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("BLOOM", v[0]); setPresetValue ("SMOOTH", v[1]);
+                setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
+            }
+            else if (category == "ROOM ENHANCER" && presetIndex > 0)
+            {
+                // deboom, tighten, mix, level
+                static constexpr float values[4][4] = {
+                    { 4.0f, 3.0f, 0.70f, 0.0f },  // Podcast: gentle
+                    { 8.0f, 5.0f, 0.85f, 0.0f },  // Untreated Room: heavy deboom
+                    { 5.0f, 6.0f, 0.80f, 0.0f },  // Live Vocal: balanced, tighter tails
+                    { 6.0f, 9.0f, 0.90f, 0.5f }   // Dead: max tightening
+                };
+                const auto& v = values[(size_t) juce::jlimit (0, 3, presetIndex - 1)];
+                setPresetValue ("DEBOOM", v[0]); setPresetValue ("TIGHTEN", v[1]);
                 setPresetValue ("MIX", v[2]); setPresetValue ("LEVEL", v[3]);
             }
             else if (category == "DRUM ENHANCER" && presetIndex > 0)

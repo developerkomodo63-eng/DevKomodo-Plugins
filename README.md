@@ -50,7 +50,7 @@ credentials, while tagged or manually dispatched releases use them when set.
 
 **EQ / Tone shaping** — EQ 6-Band, Graphic EQ, Air Enhancer, Exciter, Phase Align
 
-**Texture / Synth** — Bitcrusher, Glitch Machine, Granulator, Vinyl Emulation, Tape Emulation, Cassette Emulation, Octaver, Synth Guitar, Synth Bass, DevKomodo Vocal Shifter
+**Texture / Synth** — Bitcrusher, Glitch Machine, Granulator, Vinyl Emulation, Tape Emulation, Cassette Emulation, Octaver, Synth Guitar, Synth Bass, Waveform Synth, DevKomodo Vocal Shifter
 
 **Utility** — Utility Gain, Mono Maker
 

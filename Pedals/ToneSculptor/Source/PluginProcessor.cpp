@@ -9,6 +9,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToneSculptorAudioProcessor::
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "DRIVE", 1 }, "Drive", 0.0f, 10.0f, 2.5f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "STYLE", 1 }, "Style",
         juce::StringArray { "Tube", "Tape", "Console", "Edge", "Diode", "Hard" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "BIAS", 1 }, "Bias", -1.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "TRANSIENT", 1 }, "Transient", -10.0f, 10.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "TONE", 1 }, "Tone", 0.0f, 10.0f, 5.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "BODY", 1 }, "Body", -6.0f, 6.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "AIR", 1 }, "Air", -6.0f, 6.0f, 0.0f));
@@ -88,6 +90,8 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numCh = juce::jmin (getTotalNumInputChannels(), getTotalNumOutputChannels());
     const float drive = apvts.getRawParameterValue ("DRIVE")->load();
     const int style = (int) apvts.getRawParameterValue ("STYLE")->load();
+    const float bias = apvts.getRawParameterValue ("BIAS")->load();
+    const float transient = apvts.getRawParameterValue ("TRANSIENT")->load();
     const float tone = apvts.getRawParameterValue ("TONE")->load();
     const float bodyDb = apvts.getRawParameterValue ("BODY")->load();
     const float airDb = apvts.getRawParameterValue ("AIR")->load();
@@ -135,6 +139,7 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         float* data = processingBlock.getChannelPointer ((size_t) ch);
         float lowStateCh = lowState[(size_t) ch];
+        float previousSample = 0.0f;
 
         for (int i = 0; i < processingSamples; ++i)
         {
@@ -146,23 +151,25 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             const float smoothedLevel = outputGainBuffer[(size_t) sourceSample];
             const float dry = data[i];
             const float pushed = dry * preGain;
+            const float biasAmount = juce::jlimit (-1.0f, 1.0f, bias);
+            const float asymmetricInput = pushed + biasAmount * 0.18f * (pushed * std::abs (pushed));
             float driven = 0.0f;
             switch (style)
             {
                 case 0: // Tube: asymmetric, soft and slightly compressed.
                 {
-                    const float biased = pushed + 0.08f * pushed * pushed;
+                    const float biased = asymmetricInput + 0.08f * asymmetricInput * asymmetricInput;
                     driven = fast_tanh (biased) * driveComp;
                     break;
                 }
                 case 1: // Tape: rounded knee with stronger level-dependent compression.
-                    driven = (pushed / (1.0f + 0.45f * std::abs (pushed))) * driveComp;
+                    driven = (asymmetricInput / (1.0f + 0.45f * std::abs (asymmetricInput))) * driveComp;
                     break;
                 case 2: // Console: deliberately subtle and mostly transparent.
-                    driven = (pushed / (1.0f + 0.18f * std::abs (pushed))) * driveComp;
+                    driven = (asymmetricInput / (1.0f + 0.18f * std::abs (asymmetricInput))) * driveComp;
                     break;
                 case 3: // Edge: sharper knee for presence without becoming a distortion plugin.
-                    driven = fast_tanh (pushed * 1.35f) * 0.92f * driveComp;
+                    driven = fast_tanh (asymmetricInput * 1.35f) * 0.92f * driveComp;
                     break;
                 // Diode and Hard absorbed from the standalone Saturator
                 // plugin (now merged into this one) so this single pedal
@@ -171,13 +178,13 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 case 4: // Diode: exponential rectifier-style asymmetric clip.
                 {
                     const float k = 1.6f + smoothedDrive * 0.18f;
-                    driven = std::copysign (1.0f - std::exp (-k * std::abs (pushed)), pushed) * driveComp;
+                    driven = std::copysign (1.0f - std::exp (-k * std::abs (asymmetricInput)), asymmetricInput) * driveComp;
                     break;
                 }
                 default: // Hard: threshold clip -- the most aggressive style.
                 {
                     const float threshold = juce::jmax (0.30f, 0.95f - smoothedDrive * 0.05f);
-                    driven = (juce::jlimit (-threshold, threshold, pushed) / threshold) * driveComp;
+                    driven = (juce::jlimit (-threshold, threshold, asymmetricInput) / threshold) * driveComp;
                     break;
                 }
             }
@@ -203,7 +210,10 @@ void ToneSculptorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             sculpted += high * (airGain - 1.0f);
             sculpted += toneTilt * (high * 0.55f - low * 0.20f);
 
-            const float out = (dry * (1.0f - smoothedMix) + sculpted * smoothedMix) * smoothedLevel;
+            const float transientEdge = (dry - previousSample) * transientAmount * 0.75f;
+            const float processed = sculpted + transientEdge;
+            const float out = (dry * (1.0f - smoothedMix) + processed * smoothedMix) * smoothedLevel;
+            previousSample = dry;
             data[i] = juce::jlimit (-1.2f, 1.2f, out);
         }
 

@@ -16,26 +16,29 @@ inline std::vector<std::pair<juce::String, float>> curatedPresetValues (const ju
     std::vector<std::pair<juce::String, float>> values;
     const auto add = [&] (const char* id, float value) { values.emplace_back (id, value); };
 
-    if (category.contains ("OVERDRIVE"))
+    if (category.contains ("OVERDRIVE") || category.contains ("SATURAT") || category.contains ("CLIPPER"))
     {
         static constexpr float drive[] = { 1.8f, 3.8f, 5.6f, 7.5f };
         static constexpr float tone[] = { 3600.0f, 4400.0f, 5200.0f, 6100.0f };
         static constexpr float character[] = { 0.25f, 0.42f, 0.60f, 0.78f };
-        add ("DRIVE", drive[index]); add ("TONE", tone[index]); add ("CHARACTER", character[index]);
+        static constexpr float bias[] = { -0.35f, 0.0f, 0.25f, 0.55f };
+        add ("DRIVE", drive[index]); add ("TONE", tone[index]); add ("CHARACTER", character[index]); add ("BIAS", bias[index]);
     }
     else if (category.contains ("DISTORT"))
     {
         static constexpr float drive[] = { 2.2f, 4.8f, 6.8f, 8.8f };
         static constexpr float scoop[] = { 0.08f, 0.18f, 0.30f, 0.42f };
         static constexpr float tone[] = { 3200.0f, 3800.0f, 4600.0f, 5400.0f };
-        add ("DRIVE", drive[index]); add ("SCOOP", scoop[index]); add ("TONE", tone[index]);
+        static constexpr float bias[] = { -0.25f, 0.0f, 0.20f, 0.50f };
+        add ("DRIVE", drive[index]); add ("SCOOP", scoop[index]); add ("TONE", tone[index]); add ("BIAS", bias[index]);
     }
     else if (category.contains ("FUZZ"))
     {
         static constexpr float fuzz[] = { 4.0f, 6.5f, 8.0f, 9.4f };
         static constexpr float drive[] = { 1.6f, 3.2f, 5.0f, 7.2f };
         static constexpr float tone[] = { 2600.0f, 3400.0f, 4300.0f, 5200.0f };
-        add ("FUZZ", fuzz[index]); add ("DRIVE", drive[index]); add ("TONE", tone[index]);
+        static constexpr float bias[] = { -0.10f, 0.15f, 0.40f, 0.65f };
+        add ("FUZZ", fuzz[index]); add ("DRIVE", drive[index]); add ("TONE", tone[index]); add ("BIAS", bias[index]);
     }
     else if (category.contains ("CONSOLE DRIVE"))
     {
@@ -61,19 +64,21 @@ inline std::vector<std::pair<juce::String, float>> curatedPresetValues (const ju
         static constexpr float release[] = { 180.0f, 120.0f, 80.0f, 45.0f };
         add ("THRESHOLD", threshold[index]); add ("RELEASE", release[index]);
     }
-    else if (category.contains ("CHORUS"))
+    else if (category.contains ("CHORUS") || category.contains ("DOUBLER"))
     {
         static constexpr float rate[] = { 0.35f, 0.70f, 1.20f, 2.20f };
         static constexpr float depth[] = { 0.25f, 0.42f, 0.62f, 0.78f };
         static constexpr float mix[] = { 0.20f, 0.32f, 0.45f, 0.58f };
-        add ("RATE", rate[index]); add ("DEPTH", depth[index]); add ("MIX", mix[index]);
+        static constexpr float spread[] = { 0.18f, 0.32f, 0.52f, 0.78f };
+        add ("RATE", rate[index]); add ("DEPTH", depth[index]); add ("MIX", mix[index]); add ("SPREAD", spread[index]);
     }
     else if (category.contains ("FLANGER"))
     {
         static constexpr float rate[] = { 0.18f, 0.42f, 0.85f, 1.60f };
         static constexpr float depth[] = { 0.25f, 0.48f, 0.68f, 0.82f };
         static constexpr float feedback[] = { 0.15f, 0.35f, 0.58f, 0.72f };
-        add ("RATE", rate[index]); add ("DEPTH", depth[index]); add ("FEEDBACK", feedback[index]);
+        static constexpr float width[] = { 0.20f, 0.38f, 0.58f, 0.76f };
+        add ("RATE", rate[index]); add ("DEPTH", depth[index]); add ("FEEDBACK", feedback[index]); add ("WIDTH", width[index]);
     }
     else if (category.contains ("PHASER"))
     {
@@ -85,7 +90,8 @@ inline std::vector<std::pair<juce::String, float>> curatedPresetValues (const ju
     {
         static constexpr float rate[] = { 1.4f, 3.0f, 5.5f, 8.0f };
         static constexpr float depth[] = { 0.22f, 0.42f, 0.64f, 0.82f };
-        add ("RATE", rate[index]); add ("DEPTH", depth[index]);
+        static constexpr float bias[] = { 0.10f, 0.22f, 0.40f, 0.55f };
+        add ("RATE", rate[index]); add ("DEPTH", depth[index]); add ("DRIFT", bias[index]);
     }
     else if (category.contains ("ROTARY SPEAKER"))
     {
@@ -169,6 +175,29 @@ inline std::vector<std::pair<juce::String, float>> curatedPresetValues (const ju
         add ("WOW", wow[index]); add ("FLUTTER", flutter[index]);
         add ("SATURATION", saturation[index]); add ("HISS", hiss[index]);
     }
+    else if (category.contains ("EQ") || category.contains ("TONE") || category.contains ("FILTER"))
+    {
+        static constexpr float bass[] = { -1.0f, 0.0f, 1.5f, 2.8f };
+        static constexpr float mid[] = { -0.5f, 0.2f, 1.0f, 1.8f };
+        static constexpr float treble[] = { 0.2f, 0.8f, 1.6f, 2.4f };
+        static constexpr float cutoff[] = { 2400.0f, 4200.0f, 6400.0f, 9000.0f };
+        static constexpr float q[] = { 0.20f, 0.33f, 0.48f, 0.66f };
+        static constexpr float gain[] = { -3.0f, 0.0f, 2.0f, 5.0f };
+        add ("BASS", bass[index]); add ("MID", mid[index]); add ("TREBLE", treble[index]);
+        add ("CUTOFF", cutoff[index]); add ("Q", q[index]); add ("GAIN", gain[index]);
+    }
+    else if (category.contains ("COMPRESS") || category.contains ("LIMIT") || category.contains ("GATE"))
+    {
+        static constexpr float threshold[] = { -32.0f, -26.0f, -22.0f, -16.0f };
+        static constexpr float ratio[] = { 1.5f, 2.5f, 4.0f, 6.0f };
+        static constexpr float attack[] = { 12.0f, 20.0f, 30.0f, 50.0f };
+        static constexpr float release[] = { 180.0f, 120.0f, 80.0f, 45.0f };
+        static constexpr float mix[] = { 0.18f, 0.30f, 0.42f, 0.58f };
+        static constexpr float gain[] = { -2.0f, 0.0f, 1.5f, 3.0f };
+        add ("THRESHOLD", threshold[index]); add ("RATIO", ratio[index]);
+        add ("ATTACK", attack[index]); add ("RELEASE", release[index]);
+        add ("MIX", mix[index]); add ("GAIN", gain[index]);
+    }
     else if (category.contains ("VOCAL SHIFTER"))
     {
         static constexpr float pitch[] = { 0.0f, 7.0f, -5.0f, 12.0f };
@@ -181,17 +210,19 @@ inline std::vector<std::pair<juce::String, float>> curatedPresetValues (const ju
         static constexpr float frequency[] = { 30.0f, 90.0f, 220.0f, 440.0f };
         add ("FREQUENCY", frequency[index]);
     }
-    else if (category.contains ("SYNTH"))
+    else if (category.contains ("SYNTH") || category.contains ("WAVEFORM") || category.contains ("OSCILLATOR"))
     {
         static constexpr float waveform[] = { 0.0f, 1.0f, 6.0f, 2.0f };
+        static constexpr float morph[] = { 0.15f, 0.35f, 0.58f, 0.82f };
         static constexpr float octave[] = { 0.0f, -1.0f, 0.0f, 1.0f };
         static constexpr float glide[] = { 8.0f, 24.0f, 55.0f, 95.0f };
         static constexpr float detune[] = { 3.0f, 10.0f, 18.0f, 28.0f };
         static constexpr float subLevel[] = { 0.15f, 0.35f, 0.55f, 0.72f };
         static constexpr float mix[] = { 0.62f, 0.72f, 0.82f, 0.88f };
-        add ("WAVEFORM", waveform[index]); add ("OCTAVE", octave[index]);
-        add ("GLIDE", glide[index]); add ("DETUNE", detune[index]);
-        add ("SUBLEVEL", subLevel[index]); add ("MIX", mix[index]);
+        add ("WAVEFORM", waveform[index]); add ("WAVE_MORPH", morph[index]);
+        add ("OCTAVE", octave[index]); add ("GLIDE", glide[index]);
+        add ("DETUNE", detune[index]); add ("SUBLEVEL", subLevel[index]);
+        add ("MIX", mix[index]);
     }
     else if (category.contains ("DRUM ENHANCER"))
     {

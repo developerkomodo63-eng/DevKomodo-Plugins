@@ -90,6 +90,8 @@ Source: "allvst3\Guitar Enhancer.vst3\*"; DestDir: "{app}\Guitar Enhancer.vst3";
 Source: "allvst3\Keys Enhancer.vst3\*"; DestDir: "{app}\Keys Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
 Source: "allvst3\Acoustic Guitar Enhancer.vst3\*"; DestDir: "{app}\Acoustic Guitar Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
 Source: "allvst3\Vocal Enhancer.vst3\*"; DestDir: "{app}\Vocal Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\String Enhancer.vst3\*"; DestDir: "{app}\String Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
+Source: "allvst3\Room Enhancer.vst3\*"; DestDir: "{app}\Room Enhancer.vst3"; Flags: recursesubdirs; Components: enhancers
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

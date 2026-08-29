@@ -22,13 +22,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(JUCE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(JUCE_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
-if(APPLE)
-    set(DEVKOMODO_PLUGIN_FORMATS VST3 AU)
+# Keep the active build focused on the wavetable synth until the remaining
+# plugin targets are ready for full CI coverage.
+if(WIN32)
+    set(DEVKOMODO_PLUGIN_FORMATS VST3)
 else()
     set(DEVKOMODO_PLUGIN_FORMATS VST3)
 endif()
 
-# Descarga JUCE UNA sola vez; todos los pedales de abajo la comparten.
+# Descarga JUCE una sola vez para el target activo.
 include(FetchContent)
 FetchContent_Declare(
     JUCE
@@ -37,64 +39,6 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(JUCE)
 
-# Cada pedal es un subproyecto independiente con su propio target/plugin.
-add_subdirectory(Pedals/Overdrive)
-add_subdirectory(Pedals/Chorus)
-add_subdirectory(Pedals/Reverb)
-add_subdirectory(Pedals/SynthGuitar)
-add_subdirectory(Pedals/SynthBass)
-add_subdirectory(Pedals/FuzzGuitar)
-add_subdirectory(Pedals/DistortionGuitar)
-add_subdirectory(Pedals/Compressor)
-add_subdirectory(Pedals/Tremolo)
-add_subdirectory(Pedals/Phaser)
-add_subdirectory(Pedals/Delay)
-add_subdirectory(Pedals/NoiseGate)
-add_subdirectory(Pedals/Boost)
-add_subdirectory(Pedals/RingModulator)
-add_subdirectory(Pedals/EQ)
-add_subdirectory(Pedals/EnvelopeFilterGuitar)
-add_subdirectory(Pedals/OctaverGuitar)
-add_subdirectory(Pedals/MultibandCompressor)
-add_subdirectory(Pedals/Preamp)
-# Saturator merged into ToneSculptor (its Diode/Hard clipping styles were
-# ported in as extra STYLE options) -- no longer built as a separate plugin.
-add_subdirectory(Pedals/VocalShifter)
-add_subdirectory(Pedals/Flanger)
-add_subdirectory(Pedals/AmpSim)
-add_subdirectory(Pedals/Bitcrusher)
-add_subdirectory(Pedals/GraphicEQ)
-add_subdirectory(Pedals/Deesser)
-add_subdirectory(Pedals/TransientShaper)
-add_subdirectory(Pedals/Doubler)
-add_subdirectory(Pedals/DrumEnhancer)
-add_subdirectory(Pedals/BassEnhancer)
-add_subdirectory(Pedals/GuitarEnhancer)
-add_subdirectory(Pedals/KeysEnhancer)
-add_subdirectory(Pedals/AcousticGuitarEnhancer)
-add_subdirectory(Pedals/VocalEnhancer)
-add_subdirectory(Pedals/CassetteEmulation)
-add_subdirectory(Pedals/BroadcastCompressor)
-add_subdirectory(Pedals/TapeEmulation)
-add_subdirectory(Pedals/VinylEmulation)
-add_subdirectory(Pedals/ConvolutionReverb)
-add_subdirectory(Pedals/Exciter)
-add_subdirectory(Pedals/AirEnhancer)
-add_subdirectory(Pedals/MonoMaker)
-add_subdirectory(Pedals/PhaseAlign)
-add_subdirectory(Pedals/AutoSwell)
-add_subdirectory(Pedals/Vibrato)
-add_subdirectory(Pedals/RotarySpeaker)
-add_subdirectory(Pedals/SpringReverb)
-add_subdirectory(Pedals/TapeDelay)
-add_subdirectory(Pedals/GlitchMachine)
-add_subdirectory(Pedals/Granulator)
-# Limiter merged into Compressor as a Mode switch (Compressor/Limiter) --
-# no longer built as a separate plugin.
-add_subdirectory(Pedals/Clipper)
-add_subdirectory(Pedals/ConsoleEQ)
-add_subdirectory(Pedals/UtilityGain)
-add_subdirectory(Pedals/ToneSculptor)
-add_subdirectory(Pedals/ConsoleDrive)
-add_subdirectory(Pedals/CleanUpPro)
+# Only build the wavetable synth target for now.
+add_subdirectory(Pedals/WaveformSynth)
 

@@ -4,6 +4,82 @@
 
 class WaveformSynthAudioProcessor;
 
+// Same drawing pattern used across the rest of the DevKomodo suite
+// (see Tremolo/Source/DevKomodoUI.h). WaveformSynth was missing this
+// class entirely, so its combo boxes, buttons, and sliders had no
+// colours/paint routine assigned to them and rendered as nothing.
+class WaveformSynthLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    explicit WaveformSynthLookAndFeel (juce::Colour accentColour = juce::Colour::fromRGB (120, 170, 255))
+        : arcColour (accentColour) {}
+
+    juce::Font getComboBoxFont (juce::ComboBox&) override
+    {
+        return juce::Font (juce::FontOptions (14.0f, juce::Font::plain));
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height, bool,
+                        int, int, int, int, juce::ComboBox& box) override
+    {
+        auto bounds = juce::Rectangle<int> (0, 0, width, height).toFloat().reduced (1.0f);
+        g.setColour (juce::Colour::fromRGB (18, 20, 25));
+        g.fillRoundedRectangle (bounds, 5.0f);
+        g.setColour (box.isPopupActive() ? arcColour : juce::Colour::fromRGB (70, 74, 84));
+        g.drawRoundedRectangle (bounds, 5.0f, 1.2f);
+
+        auto arrowZone = bounds.removeFromRight (20.0f);
+        juce::Path arrow;
+        const float cx = arrowZone.getCentreX(), cy = arrowZone.getCentreY();
+        arrow.addTriangle (cx - 4.5f, cy - 2.0f, cx + 4.5f, cy - 2.0f, cx, cy + 3.5f);
+        g.setColour (arcColour);
+        g.fillPath (arrow);
+    }
+
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPosProportional, float rotaryStartAngle,
+                           float rotaryEndAngle, juce::Slider& slider) override
+    {
+        auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
+        auto knobArea = area.reduced (8.0f, 18.0f);
+        knobArea.removeFromTop (10.0f);
+        const float diameter = juce::jmin (knobArea.getWidth(), knobArea.getHeight());
+        auto knob = juce::Rectangle<float> (0, 0, diameter, diameter).withCentre (knobArea.getCentre());
+        const float radius = knob.getWidth() * 0.5f;
+        const auto centre = knob.getCentre();
+
+        g.setColour (juce::Colour::fromRGB (18, 20, 25));
+        g.fillEllipse (knob);
+        g.setColour (juce::Colour::fromRGB (62, 66, 76));
+        g.drawEllipse (knob, 1.0f);
+
+        const float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
+                           rotaryStartAngle, angle, true);
+        g.setColour (arcColour);
+        g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        const float pointerLength = radius * 0.62f;
+        juce::Path pointer;
+        pointer.addRoundedRectangle (-1.5f, -pointerLength, 3.0f, pointerLength * 0.42f, 1.5f);
+        g.setColour (juce::Colours::white);
+        g.fillPath (pointer, juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
+
+        auto label = slider.getName();
+        if (label.isNotEmpty())
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.78f));
+            g.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
+            g.drawFittedText (label.toUpperCase(), area.removeFromTop (18).toNearestInt(),
+                              juce::Justification::centred, 1);
+        }
+    }
+
+private:
+    juce::Colour arcColour;
+};
+
 class WaveformSynthEditor final : public juce::AudioProcessorEditor
 {
 public:
@@ -62,6 +138,7 @@ public:
         presetCombo->onChange = [this] {
             processor.applyPreset (presetCombo->getSelectedId() - 1);
         };
+        presetCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (presetCombo);
 
         oscABankCombo = new juce::ComboBox ("OSC_A_BANK");
@@ -69,6 +146,7 @@ public:
         oscABankCombo->addItem ("Analog", 2);
         oscABankCombo->addItem ("Digital", 3);
         oscABankCombo->addItem ("Hybrid", 4);
+        oscABankCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (oscABankCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_BANK", *oscABankCombo));
 
@@ -83,6 +161,7 @@ public:
         oscAWaveformCombo->addItem ("Folded", 8);
         oscAWaveformCombo->addItem ("Ramp", 9);
         oscAWaveformCombo->addItem ("PWM", 10);
+        oscAWaveformCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (oscAWaveformCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_WAVEFORM", *oscAWaveformCombo));
 
@@ -91,6 +170,7 @@ public:
         oscBBankCombo->addItem ("Analog", 2);
         oscBBankCombo->addItem ("Digital", 3);
         oscBBankCombo->addItem ("Hybrid", 4);
+        oscBBankCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (oscBBankCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_BANK", *oscBBankCombo));
 
@@ -105,6 +185,7 @@ public:
         oscBWaveformCombo->addItem ("Folded", 8);
         oscBWaveformCombo->addItem ("Ramp", 9);
         oscBWaveformCombo->addItem ("PWM", 10);
+        oscBWaveformCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (oscBWaveformCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_WAVEFORM", *oscBWaveformCombo));
 
@@ -113,6 +194,7 @@ public:
         filterModeCombo->addItem ("BP", 2);
         filterModeCombo->addItem ("HP", 3);
         filterModeCombo->addItem ("Notch", 4);
+        filterModeCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (filterModeCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "FILTER_MODE", *filterModeCombo));
 
@@ -120,6 +202,7 @@ public:
         voiceModeCombo->addItem ("Poly", 1);
         voiceModeCombo->addItem ("Mono", 2);
         voiceModeCombo->addItem ("Legato", 3);
+        voiceModeCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (voiceModeCombo);
         comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "VOICE_MODE", *voiceModeCombo));
 
@@ -130,14 +213,23 @@ public:
 
         savePresetButton = new juce::TextButton ("SAVE_PRESET");
         savePresetButton->setButtonText ("Save");
+        savePresetButton->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (120, 170, 255).withAlpha (0.20f));
+        savePresetButton->setColour (juce::TextButton::buttonOnColourId, juce::Colour::fromRGB (120, 170, 255).withAlpha (0.32f));
+        savePresetButton->setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        savePresetButton->setColour (juce::TextButton::textColourOnId, juce::Colours::white);
         addAndMakeVisible (savePresetButton);
 
         deletePresetButton = new juce::TextButton ("DELETE_PRESET");
         deletePresetButton->setButtonText ("Delete");
+        deletePresetButton->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (120, 170, 255).withAlpha (0.20f));
+        deletePresetButton->setColour (juce::TextButton::buttonOnColourId, juce::Colour::fromRGB (120, 170, 255).withAlpha (0.32f));
+        deletePresetButton->setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        deletePresetButton->setColour (juce::TextButton::textColourOnId, juce::Colours::white);
         addAndMakeVisible (deletePresetButton);
 
         userPresetCombo = new juce::ComboBox ("USER_PRESET");
         userPresetCombo->setTextWhenNothingSelected ("Custom");
+        userPresetCombo->setLookAndFeel (&lookAndFeel);
         addAndMakeVisible (userPresetCombo);
 
         savePresetButton->onClick = [this]
@@ -189,6 +281,11 @@ public:
     {
         for (auto* slider : sliders)
             slider->setLookAndFeel (nullptr);
+
+        for (auto* combo : { presetCombo, oscABankCombo, oscAWaveformCombo, oscBBankCombo,
+                              oscBWaveformCombo, filterModeCombo, voiceModeCombo, userPresetCombo })
+            if (combo != nullptr)
+                combo->setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -290,5 +387,5 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboBoxAttachments;
     std::vector<juce::Slider*> sliders;
-    juce::LookAndFeel_V4 lookAndFeel;
+    WaveformSynthLookAndFeel lookAndFeel;
 };

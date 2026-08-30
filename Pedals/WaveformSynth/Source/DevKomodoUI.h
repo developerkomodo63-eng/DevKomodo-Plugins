@@ -230,8 +230,7 @@ public:
         placeCombo (filterModeCombo, 90);
         placeCombo (voiceModeCombo, 100);
 
-        if (userPresetName != nullptr)
-            userPresetName.setBounds (left, top + 36, 170, 28);
+        userPresetName.setBounds (left, top + 36, 170, 28);
         if (savePresetButton != nullptr)
             savePresetButton->setBounds (left + 182, top + 36, 70, 28);
         if (deletePresetButton != nullptr)

@@ -4,24 +4,22 @@
 
 class WaveformSynthAudioProcessor;
 
-class WaveformSynthEditor final : public juce::AudioProcessorEditor,
-                                  private juce::Timer
+class WaveformSynthEditor final : public juce::AudioProcessorEditor
 {
 public:
     WaveformSynthEditor (WaveformSynthAudioProcessor& p, juce::AudioProcessorValueTreeState& state)
         : AudioProcessorEditor (&p), processor (p), apvts (state)
     {
         setOpaque (true);
-        setSize (1080, 800);
-        startTimerHz (30);
+        setSize (1040, 640);
 
         title.setText ("WAVEFORM SYNTH", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
         title.setColour (juce::Label::textColourId, juce::Colours::white);
         addAndMakeVisible (title);
 
-        subtitle.setText ("SERUM-INSPIRED / LIGHTWEIGHT / DUAL-OSC", juce::dontSendNotification);
-        subtitle.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::plain)));
+        subtitle.setText ("DUAL OSC / LIGHT-LOAD / ANALOG INSPIRED", juce::dontSendNotification);
+        subtitle.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::plain)));
         subtitle.setColour (juce::Label::textColourId, juce::Colours::grey);
         addAndMakeVisible (subtitle);
 
@@ -37,7 +35,7 @@ public:
             slider->setName (name);
             slider->setRange (min, max, decimals > 0 ? 0.01 : 0.1);
             slider->setValue (defaultValue);
-            slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 90, 20);
+            slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 18);
             slider->setNumDecimalPlacesToDisplay (decimals);
             slider->setVelocityBasedMode (false);
             slider->setLookAndFeel (&lookAndFeel);
@@ -61,9 +59,6 @@ public:
         presetCombo->addItem ("Bass Drone", 8);
         presetCombo->setSelectedId (1);
         presetCombo->setTextWhenNothingSelected ("Preset");
-        presetCombo->setTooltip ("Preset");
-        presetCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "PRESET", *presetCombo));
         presetCombo->onChange = [this] {
             processor.applyPreset (presetCombo->getSelectedId() - 1);
         };
@@ -74,12 +69,8 @@ public:
         oscABankCombo->addItem ("Analog", 2);
         oscABankCombo->addItem ("Digital", 3);
         oscABankCombo->addItem ("Hybrid", 4);
-        oscABankCombo->setSelectedId (1);
-        oscABankCombo->setTextWhenNothingSelected ("Osc A Bank");
-        oscABankCombo->setTooltip ("Osc A Bank");
-        oscABankCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_BANK", *oscABankCombo));
         addAndMakeVisible (oscABankCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_BANK", *oscABankCombo));
 
         oscAWaveformCombo = new juce::ComboBox ("OSC_A_WAVEFORM");
         oscAWaveformCombo->addItem ("Sine", 1);
@@ -92,24 +83,16 @@ public:
         oscAWaveformCombo->addItem ("Folded", 8);
         oscAWaveformCombo->addItem ("Ramp", 9);
         oscAWaveformCombo->addItem ("PWM", 10);
-        oscAWaveformCombo->setSelectedId (2);
-        oscAWaveformCombo->setTextWhenNothingSelected ("Osc A");
-        oscAWaveformCombo->setTooltip ("Oscillator A");
-        oscAWaveformCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_WAVEFORM", *oscAWaveformCombo));
         addAndMakeVisible (oscAWaveformCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_A_WAVEFORM", *oscAWaveformCombo));
 
         oscBBankCombo = new juce::ComboBox ("OSC_B_BANK");
         oscBBankCombo->addItem ("Classic", 1);
         oscBBankCombo->addItem ("Analog", 2);
         oscBBankCombo->addItem ("Digital", 3);
         oscBBankCombo->addItem ("Hybrid", 4);
-        oscBBankCombo->setSelectedId (2);
-        oscBBankCombo->setTextWhenNothingSelected ("Osc B Bank");
-        oscBBankCombo->setTooltip ("Osc B Bank");
-        oscBBankCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_BANK", *oscBBankCombo));
         addAndMakeVisible (oscBBankCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_BANK", *oscBBankCombo));
 
         oscBWaveformCombo = new juce::ComboBox ("OSC_B_WAVEFORM");
         oscBWaveformCombo->addItem ("Sine", 1);
@@ -122,62 +105,40 @@ public:
         oscBWaveformCombo->addItem ("Folded", 8);
         oscBWaveformCombo->addItem ("Ramp", 9);
         oscBWaveformCombo->addItem ("PWM", 10);
-        oscBWaveformCombo->setSelectedId (3);
-        oscBWaveformCombo->setTextWhenNothingSelected ("Osc B");
-        oscBWaveformCombo->setTooltip ("Oscillator B");
-        oscBWaveformCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_WAVEFORM", *oscBWaveformCombo));
         addAndMakeVisible (oscBWaveformCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "OSC_B_WAVEFORM", *oscBWaveformCombo));
 
         filterModeCombo = new juce::ComboBox ("FILTER_MODE");
         filterModeCombo->addItem ("LP", 1);
         filterModeCombo->addItem ("BP", 2);
         filterModeCombo->addItem ("HP", 3);
         filterModeCombo->addItem ("Notch", 4);
-        filterModeCombo->setSelectedId (1);
-        filterModeCombo->setTextWhenNothingSelected ("Filter");
-        filterModeCombo->setTooltip ("Filter Mode");
-        filterModeCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "FILTER_MODE", *filterModeCombo));
         addAndMakeVisible (filterModeCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "FILTER_MODE", *filterModeCombo));
 
         voiceModeCombo = new juce::ComboBox ("VOICE_MODE");
         voiceModeCombo->addItem ("Poly", 1);
         voiceModeCombo->addItem ("Mono", 2);
         voiceModeCombo->addItem ("Legato", 3);
-        voiceModeCombo->setSelectedId (1);
-        voiceModeCombo->setTextWhenNothingSelected ("Voice");
-        voiceModeCombo->setTooltip ("Voice Mode");
-        voiceModeCombo->setJustificationType (juce::Justification::centredLeft);
-        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "VOICE_MODE", *voiceModeCombo));
         addAndMakeVisible (voiceModeCombo);
+        comboBoxAttachments.emplace_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, "VOICE_MODE", *voiceModeCombo));
 
-        userPresetCombo = new juce::ComboBox ("USER_PRESET");
-        userPresetCombo->setTextWhenNothingSelected ("User Presets");
-        userPresetCombo->setTooltip ("Saved custom presets");
-        userPresetCombo->setJustificationType (juce::Justification::centredLeft);
-        addAndMakeVisible (userPresetCombo);
+        userPresetName.setMultiLine (false);
+        userPresetName.setText ("My Preset");
+        userPresetName.setFont (juce::Font (juce::FontOptions (13.0f)));
+        addAndMakeVisible (userPresetName);
 
         savePresetButton = new juce::TextButton ("SAVE_PRESET");
         savePresetButton->setButtonText ("Save");
-        savePresetButton->setTooltip ("Save current sound as custom preset");
-        savePresetButton->setName ("SAVE_PRESET_BUTTON");
         addAndMakeVisible (savePresetButton);
 
         deletePresetButton = new juce::TextButton ("DELETE_PRESET");
         deletePresetButton->setButtonText ("Delete");
-        deletePresetButton->setTooltip ("Delete selected custom preset");
-        deletePresetButton->setName ("DELETE_PRESET_BUTTON");
         addAndMakeVisible (deletePresetButton);
 
-        userPresetName.setMultiLine (false);
-        userPresetName.setText ("My Preset");
-        userPresetName.setName ("USER_PRESET_NAME");
-        userPresetName.setFont (juce::Font (juce::FontOptions (13.0f)));
-        userPresetName.setColour (juce::TextEditor::backgroundColourId, juce::Colour::fromRGB (18, 21, 27));
-        userPresetName.setColour (juce::TextEditor::textColourId, juce::Colours::white);
-        userPresetName.setColour (juce::TextEditor::highlightColourId, juce::Colour::fromRGB (85, 103, 136));
-        addAndMakeVisible (userPresetName);
+        userPresetCombo = new juce::ComboBox ("USER_PRESET");
+        userPresetCombo->setTextWhenNothingSelected ("Custom");
+        addAndMakeVisible (userPresetCombo);
 
         savePresetButton->onClick = [this]
         {
@@ -210,34 +171,17 @@ public:
         refreshUserPresets();
 
         addSlider ("OSC_A_POSITION", "OSC_A_POSITION", 0.0f, 1.0f, 0.35f, 2);
-        addSlider ("OSC_A_PHASE", "OSC_A_PHASE", 0.0f, 1.0f, 0.12f, 2);
         addSlider ("POSITION", "POSITION", 0.0f, 1.0f, 0.42f, 2);
         addSlider ("WAVE MORPH", "WAVE_MORPH", 0.0f, 1.0f, 0.48f, 2);
         addSlider ("OSC_B_POSITION", "OSC_B_POSITION", 0.0f, 1.0f, 0.55f, 2);
-        addSlider ("OSC_B_PHASE", "OSC_B_PHASE", 0.0f, 1.0f, 0.32f, 2);
         addSlider ("DETUNE", "DETUNE", 0.0f, 24.0f, 1.5f, 1);
-        addSlider ("DRIFT", "DRIFT", 0.0f, 1.0f, 0.15f, 2);
-        addSlider ("OSC_SYNC", "OSC_SYNC", 0.0f, 1.0f, 0.18f, 2);
-        addSlider ("VIBRATO", "VIBRATO", 0.0f, 1.0f, 0.14f, 2);
-        addSlider ("MOD_DEPTH", "MOD_DEPTH", 0.0f, 1.0f, 0.18f, 2);
-        addSlider ("GLIDE", "GLIDE", 0.0f, 200.0f, 12.0f, 1);
-        addSlider ("UNISON", "UNISON", 0.0f, 1.0f, 0.18f, 2);
-        addSlider ("SUB", "SUB", 0.0f, 1.0f, 0.28f, 2);
         addSlider ("MIX", "MIX", 0.0f, 1.0f, 0.55f, 2);
-        addSlider ("SPREAD", "SPREAD", 0.0f, 1.0f, 0.30f, 2);
-        addSlider ("WIDTH", "WIDTH", 0.0f, 1.0f, 0.60f, 2);
-        addSlider ("AIR", "AIR", 0.0f, 1.0f, 0.20f, 2);
-        addSlider ("NOISE", "NOISE", 0.0f, 1.0f, 0.05f, 2);
-        addSlider ("WARMTH", "WARMTH", 0.0f, 1.0f, 0.55f, 2);
-        addSlider ("CHARACTER", "CHARACTER", 0.0f, 1.0f, 0.42f, 2);
+        addSlider ("CUTOFF", "CUTOFF", 300.0f, 15000.0f, 3200.0f, 0);
+        addSlider ("RESONANCE", "RESONANCE", 0.0f, 1.0f, 0.30f, 2);
+        addSlider ("DRIVE", "DRIVE", 0.0f, 1.0f, 0.12f, 2);
         addSlider ("ATTACK", "ATTACK", 0.0f, 2.0f, 0.01f, 2);
         addSlider ("DECAY", "DECAY", 0.0f, 2.0f, 0.18f, 2);
-        addSlider ("SUSTAIN", "SUSTAIN", 0.0f, 1.0f, 0.72f, 2);
         addSlider ("RELEASE", "RELEASE", 0.0f, 3.0f, 0.20f, 2);
-        addSlider ("DRIVE", "DRIVE", 0.0f, 1.0f, 0.12f, 2);
-        addSlider ("CUTOFF", "CUTOFF", 300.0f, 15000.0f, 3200.0f, 0);
-        addSlider ("FILTER DRIVE", "FILTER_DRIVE", 0.0f, 1.0f, 0.32f, 2);
-        addSlider ("RESONANCE", "RESONANCE", 0.0f, 1.0f, 0.30f, 2);
         addSlider ("LEVEL", "LEVEL", -24.0f, 12.0f, 0.0f, 1);
     }
 
@@ -251,95 +195,67 @@ public:
     {
         g.fillAll (juce::Colour::fromRGB (10, 12, 16));
         g.setColour (juce::Colour::fromRGB (25, 28, 35));
-        g.fillRoundedRectangle (juce::Rectangle<float> (10.0f, 10.0f, getWidth() - 20.0f, getHeight() - 20.0f), 12.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.15f));
-        g.drawRoundedRectangle (juce::Rectangle<float> (14.0f, 14.0f, getWidth() - 28.0f, getHeight() - 28.0f), 12.0f, 1.0f);
-
-        g.setColour (juce::Colours::white.withAlpha (0.06f));
-        g.fillRoundedRectangle (juce::Rectangle<float> (22.0f, 72.0f, getWidth() - 44.0f, 68.0f), 10.0f);
-
-        const auto waveformArea = juce::Rectangle<float> (28.0f, 104.0f, getWidth() - 56.0f, 28.0f);
-        const auto drawWaveform = [&g, waveformArea] (juce::Colour colour, float phase, int waveform)
-        {
-            juce::Path path;
-            constexpr int points = 160;
-
-            for (int i = 0; i < points; ++i)
-            {
-                const auto normalisedX = (float) i / (float) (points - 1);
-                const auto angle = juce::MathConstants<float>::twoPi * (normalisedX + phase);
-                float value = std::sin (angle);
-
-                if (waveform == 1)
-                    value = 2.0f * (normalisedX - std::floor (normalisedX + 0.5f));
-                else if (waveform == 2)
-                    value = std::sin (angle) >= 0.0f ? 1.0f : -1.0f;
-                else if (waveform == 3)
-                    value = 1.0f - 4.0f * std::abs (std::round (normalisedX) - normalisedX);
-
-                const auto point = juce::Point<float> (waveformArea.getX() + normalisedX * waveformArea.getWidth(),
-                                                       waveformArea.getCentreY() - value * waveformArea.getHeight() * 0.42f);
-                if (i == 0)
-                    path.startNewSubPath (point);
-                else
-                    path.lineTo (point);
-            }
-
-            g.setColour (colour);
-            g.strokePath (path, juce::PathStrokeType (1.5f));
-        };
-
-        const auto oscAWaveform = (int) apvts.getRawParameterValue ("OSC_A_WAVEFORM")->load();
-        const auto oscBWaveform = (int) apvts.getRawParameterValue ("OSC_B_WAVEFORM")->load();
-        drawWaveform (juce::Colour::fromRGB (91, 208, 190), 0.12f, oscAWaveform);
-        drawWaveform (juce::Colour::fromRGB (255, 166, 92), 0.32f, oscBWaveform);
+        g.fillRoundedRectangle (juce::Rectangle<float> (8.0f, 8.0f, getWidth() - 16.0f, getHeight() - 16.0f), 12.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.drawRoundedRectangle (juce::Rectangle<float> (12.0f, 12.0f, getWidth() - 24.0f, getHeight() - 24.0f), 12.0f, 1.0f);
+        g.setColour (juce::Colour::fromRGB (35, 38, 47));
+        g.fillRoundedRectangle (juce::Rectangle<float> (20.0f, 72.0f, getWidth() - 40.0f, 90.0f), 10.0f);
     }
 
     void resized() override
     {
-        title.setBounds (20, 18, getWidth() - 40, 30);
-        subtitle.setBounds (30, 54, getWidth() - 60, 16);
+        title.setBounds (24, 18, getWidth() - 48, 26);
+        subtitle.setBounds (26, 48, getWidth() - 52, 18);
 
-        const int cols = 6;
-        const int gap = 12;
-        const int knobWidth = (getWidth() - 120) / cols;
-        const int knobHeight = 105;
-        const int knobStartY = 170;
+        const int left = 24;
+        const int top = 90;
+        const int comboH = 26;
+        const int comboGap = 12;
 
-        if (presetCombo != nullptr)
-            presetCombo->setBounds (28, 82, 170, 30);
-        if (oscABankCombo != nullptr)
-            oscABankCombo->setBounds (215, 82, 125, 30);
-        if (oscAWaveformCombo != nullptr)
-            oscAWaveformCombo->setBounds (350, 82, 145, 30);
-        if (oscBBankCombo != nullptr)
-            oscBBankCombo->setBounds (505, 82, 125, 30);
-        if (oscBWaveformCombo != nullptr)
-            oscBWaveformCombo->setBounds (640, 82, 145, 30);
-        if (filterModeCombo != nullptr)
-            filterModeCombo->setBounds (800, 82, 110, 30);
-        if (voiceModeCombo != nullptr)
-            voiceModeCombo->setBounds (920, 82, 125, 30);
+        // Lay the top-row combos out sequentially instead of hardcoded
+        // offsets, so widths can change without boxes overlapping.
+        int x = left;
+        auto placeCombo = [&] (juce::ComboBox* combo, int width)
+        {
+            if (combo != nullptr)
+                combo->setBounds (x, top, width, comboH);
+            x += width + comboGap;
+        };
 
-        userPresetName.setBounds (28, 122, 170, 28);
+        placeCombo (presetCombo, 170);
+        placeCombo (oscABankCombo, 120);
+        placeCombo (oscAWaveformCombo, 150);
+        placeCombo (oscBBankCombo, 120);
+        placeCombo (oscBWaveformCombo, 150);
+        placeCombo (filterModeCombo, 90);
+        placeCombo (voiceModeCombo, 100);
+
+        if (userPresetName != nullptr)
+            userPresetName.setBounds (left, top + 36, 170, 28);
         if (savePresetButton != nullptr)
-            savePresetButton->setBounds (210, 122, 64, 28);
+            savePresetButton->setBounds (left + 182, top + 36, 70, 28);
         if (deletePresetButton != nullptr)
-            deletePresetButton->setBounds (282, 122, 70, 28);
+            deletePresetButton->setBounds (left + 260, top + 36, 72, 28);
         if (userPresetCombo != nullptr)
-            userPresetCombo->setBounds (360, 122, 240, 28);
+            userPresetCombo->setBounds (left + 342, top + 36, 170, 28);
+
+        // 5 columns keeps 13 knobs to 3 rows, which fits inside the
+        // editor height; 4 columns needed 4 rows and pushed the last
+        // knob (LEVEL) below the visible window.
+        const int cols = 5;
+        const int gapX = 18;
+        const int gapY = 18;
+        const int knobWidth = (getWidth() - 90) / cols;
+        const int knobHeight = 124;
+        const int startX = 26;
+        const int startY = 172;
 
         for (int i = 0; i < (int) sliders.size(); ++i)
         {
-            const int x = 28 + (i % cols) * (knobWidth + gap);
-            const int y = knobStartY + (i / cols) * (knobHeight + 18);
-            sliders[(size_t) i]->setBounds (x, y, knobWidth - 12, knobHeight);
+            const int knobX = startX + (i % cols) * (knobWidth + gapX);
+            const int knobY = startY + (i / cols) * (knobHeight + gapY);
+            sliders[(size_t) i]->setBounds (knobX, knobY, knobWidth - 18, knobHeight);
         }
-    }
-
-    void timerCallback() override
-    {
-        repaint (22, 72, getWidth() - 44, 68);
     }
 
 private:
@@ -349,7 +265,6 @@ private:
             return;
 
         userPresetCombo->clear (juce::dontSendNotification);
-
         const auto presetNames = processor.getUserPresetNames();
         for (int i = 0; i < presetNames.size(); ++i)
             userPresetCombo->addItem (presetNames[i], i + 1);

@@ -69,12 +69,19 @@ private:
     int findReusableVoice (int midiNote) const;
     void noteOn (int midiNote, float velocity);
     void noteOff (int midiNote);
+    void clearHeldNotes();
+    void addHeldNote (int midiNote, float velocity);
+    void removeHeldNote (int midiNote);
+    int getLatestHeldNote() const;
 
     static constexpr int tableSize = 2048;
     static constexpr int wavetableCount = 10;
     static constexpr int wavetableBanks = 4;
     std::array<std::array<std::array<float, tableSize>, wavetableCount>, wavetableBanks> wavetableBank;
     std::array<Voice, 8> voices;
+    std::array<int, 16> heldNotes {};
+    std::array<float, 16> heldVelocities {};
+    int numHeldNotes = 0;
     juce::ValueTree customPresets { "CustomPresets" };
     double sampleRate = 44100.0;
     juce::SmoothedValue<float> levelSmoothed;

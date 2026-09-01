@@ -33,6 +33,14 @@ namespace
 
         return ids;
     }
+
+    int getChoiceIndex (const juce::AudioProcessorValueTreeState& state, const juce::String& id, int maximumIndex) noexcept
+    {
+        if (const auto* raw = state.getRawParameterValue (id))
+            return juce::jlimit (0, maximumIndex, juce::roundToInt (raw->load() * (float) maximumIndex));
+
+        return 0;
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout WaveformSynthAudioProcessor::createParameterLayout()
@@ -553,7 +561,7 @@ bool WaveformSynthAudioProcessor::isBusesLayoutSupported (const BusesLayout& lay
 int WaveformSynthAudioProcessor::findReusableVoice (int midiNote) const
 {
     juce::ignoreUnused (midiNote);
-    const int voiceMode = (int) apvts.getRawParameterValue ("VOICE_MODE")->load();
+    const int voiceMode = getChoiceIndex (apvts, "VOICE_MODE", 2);
 
     if (voiceMode == 1 || voiceMode == 2)
         return 0;
@@ -613,7 +621,7 @@ int WaveformSynthAudioProcessor::getLatestHeldNote() const
 
 void WaveformSynthAudioProcessor::noteOn (int midiNote, float velocity)
 {
-    const int voiceMode = (int) apvts.getRawParameterValue ("VOICE_MODE")->load();
+    const int voiceMode = getChoiceIndex (apvts, "VOICE_MODE", 2);
     const float safeVelocity = juce::jlimit (0.0f, 1.0f, velocity);
 
     if (voiceMode == 1 || voiceMode == 2)
@@ -652,7 +660,7 @@ void WaveformSynthAudioProcessor::noteOn (int midiNote, float velocity)
 
 void WaveformSynthAudioProcessor::noteOff (int midiNote)
 {
-    const int voiceMode = (int) apvts.getRawParameterValue ("VOICE_MODE")->load();
+    const int voiceMode = getChoiceIndex (apvts, "VOICE_MODE", 2);
 
     if (voiceMode == 1 || voiceMode == 2)
     {
@@ -788,12 +796,12 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         }
     }
 
-    const int oscABank = (int) apvts.getRawParameterValue ("OSC_A_BANK")->load();
-    const int oscAWaveform = (int) apvts.getRawParameterValue ("OSC_A_WAVEFORM")->load();
+    const int oscABank = getChoiceIndex (apvts, "OSC_A_BANK", 3);
+    const int oscAWaveform = getChoiceIndex (apvts, "OSC_A_WAVEFORM", 9);
     const float oscAPosition = apvts.getRawParameterValue ("OSC_A_POSITION")->load();
     const float oscAPhase = apvts.getRawParameterValue ("OSC_A_PHASE")->load();
-    const int oscBBank = (int) apvts.getRawParameterValue ("OSC_B_BANK")->load();
-    const int oscBWaveform = (int) apvts.getRawParameterValue ("OSC_B_WAVEFORM")->load();
+    const int oscBBank = getChoiceIndex (apvts, "OSC_B_BANK", 3);
+    const int oscBWaveform = getChoiceIndex (apvts, "OSC_B_WAVEFORM", 9);
     const float oscBPosition = apvts.getRawParameterValue ("OSC_B_POSITION")->load();
     const float oscBPhase = apvts.getRawParameterValue ("OSC_B_PHASE")->load();
     const float position = apvts.getRawParameterValue ("POSITION")->load();
@@ -803,7 +811,7 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float oscSync = apvts.getRawParameterValue ("OSC_SYNC")->load();
     const float vibrato = apvts.getRawParameterValue ("VIBRATO")->load();
     const float modDepth = apvts.getRawParameterValue ("MOD_DEPTH")->load();
-    const int filterMode = (int) apvts.getRawParameterValue ("FILTER_MODE")->load();
+    const int filterMode = getChoiceIndex (apvts, "FILTER_MODE", 3);
     const float glideMs = apvts.getRawParameterValue ("GLIDE")->load();
     const float unisonDepth = juce::jlimit (0.0f, 1.0f, apvts.getRawParameterValue ("UNISON")->load());
     const float subLevel = apvts.getRawParameterValue ("SUB")->load();

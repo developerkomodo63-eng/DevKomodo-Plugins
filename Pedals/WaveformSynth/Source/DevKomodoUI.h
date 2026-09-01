@@ -55,7 +55,8 @@ public:
         g.drawFittedText (slider.getName().toUpperCase(), labelArea.toNearestInt(), juce::Justification::centred, 1);
 
         const float diameter = juce::jmin (area.getWidth(), area.getHeight()) - 8.0f;
-        auto knob = juce::Rectangle<float> (diameter, diameter).withCentre (area.getCentreX(), area.getCentreY() - 2.0f);
+        auto knob = juce::Rectangle<float> (diameter, diameter)
+                       .withCentre (juce::Point<float> (area.getCentreX(), area.getCentreY() - 2.0f));
         const auto centre = knob.getCentre();
         const float radius = diameter * 0.5f;
 

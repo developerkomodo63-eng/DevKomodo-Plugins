@@ -80,7 +80,8 @@ private:
     juce::Colour arcColour;
 };
 
-class WaveformSynthEditor final : public juce::AudioProcessorEditor
+class WaveformSynthEditor final : public juce::AudioProcessorEditor,
+                                  private juce::Timer
 {
 public:
     WaveformSynthEditor (WaveformSynthAudioProcessor& p, juce::AudioProcessorValueTreeState& state)
@@ -88,6 +89,9 @@ public:
     {
         setOpaque (true);
         setSize (1040, 640);
+        setResizable (true, true);
+        setResizeLimits (860, 600, 1600, 1000);
+        startTimerHz (15);
 
         title.setText ("WAVEFORM SYNTH", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
@@ -209,6 +213,10 @@ public:
         userPresetName.setMultiLine (false);
         userPresetName.setText ("My Preset");
         userPresetName.setFont (juce::Font (juce::FontOptions (13.0f)));
+        userPresetName.setColour (juce::TextEditor::textColourId, juce::Colours::white);
+        userPresetName.setColour (juce::TextEditor::backgroundColourId, juce::Colour::fromRGB (14, 16, 20));
+        userPresetName.setColour (juce::TextEditor::outlineColourId, juce::Colour::fromRGB (60, 64, 70));
+        userPresetName.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colour::fromRGB (120, 170, 255));
         addAndMakeVisible (userPresetName);
 
         savePresetButton = new juce::TextButton ("SAVE_PRESET");
@@ -279,6 +287,8 @@ public:
 
     ~WaveformSynthEditor() override
     {
+        stopTimer();
+
         for (auto* slider : sliders)
             slider->setLookAndFeel (nullptr);
 
@@ -295,8 +305,24 @@ public:
         g.fillRoundedRectangle (juce::Rectangle<float> (8.0f, 8.0f, getWidth() - 16.0f, getHeight() - 16.0f), 12.0f);
         g.setColour (juce::Colours::white.withAlpha (0.08f));
         g.drawRoundedRectangle (juce::Rectangle<float> (12.0f, 12.0f, getWidth() - 24.0f, getHeight() - 24.0f), 12.0f, 1.0f);
+
+        const auto display = juce::Rectangle<float> (20.0f, 72.0f, getWidth() - 40.0f, 90.0f);
         g.setColour (juce::Colour::fromRGB (35, 38, 47));
-        g.fillRoundedRectangle (juce::Rectangle<float> (20.0f, 72.0f, getWidth() - 40.0f, 90.0f), 10.0f);
+        g.fillRoundedRectangle (display, 10.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.07f));
+        g.drawRoundedRectangle (display.reduced (1.0f), 9.0f, 1.0f);
+
+        drawWaveformPreview (g, display.reduced (10.0f),
+                             (int) apvts.getRawParameterValue ("OSC_A_WAVEFORM")->load(),
+                             juce::Colour::fromRGB (91, 208, 190), "OSC A");
+        drawWaveformPreview (g, display.reduced (10.0f),
+                             (int) apvts.getRawParameterValue ("OSC_B_WAVEFORM")->load(),
+                             juce::Colour::fromRGB (255, 166, 92), "OSC B");
+    }
+
+    void timerCallback() override
+    {
+        repaint (20, 72, getWidth() - 40, 90);
     }
 
     void resized() override
@@ -355,6 +381,56 @@ public:
     }
 
 private:
+    void drawWaveformPreview (juce::Graphics& g, juce::Rectangle<float> area, int waveform,
+                              juce::Colour colour, const juce::String& label)
+    {
+        const bool isA = label == "OSC A";
+        auto waveArea = area.withY (area.getY() + (isA ? 8.0f : 43.0f))
+                            .withHeight (30.0f);
+
+        g.setColour (juce::Colours::white.withAlpha (0.16f));
+        g.drawHorizontalLine ((int) waveArea.getCentreY(), waveArea.getX(), waveArea.getRight());
+
+        juce::Path path;
+        constexpr int points = 220;
+        for (int i = 0; i < points; ++i)
+        {
+            const float x = (float) i / (float) (points - 1);
+            const float phase = x;
+            float value = 0.0f;
+
+            switch (juce::jlimit (0, 9, waveform))
+            {
+                case 0: value = std::sin (juce::MathConstants<float>::twoPi * phase); break;
+                case 1: value = 2.0f * phase - 1.0f; break;
+                case 2: value = phase < 0.5f ? 1.0f : -1.0f; break;
+                case 3: value = 1.0f - 4.0f * std::abs (phase - 0.5f); break;
+                case 4: value = phase < 0.25f ? 1.0f : -1.0f; break;
+                case 5: value = 0.7f * (2.0f * phase - 1.0f)
+                                  + 0.3f * std::sin (juce::MathConstants<float>::twoPi * phase); break;
+                case 6: value = 0.65f * std::sin (juce::MathConstants<float>::twoPi * phase)
+                                  + 0.35f * std::sin (juce::MathConstants<float>::twoPi * phase * 3.0f); break;
+                case 7: value = std::sin (juce::MathConstants<float>::twoPi * phase)
+                                  * (1.0f - 0.35f * std::abs (std::sin (juce::MathConstants<float>::twoPi * phase * 2.0f))); break;
+                case 8: value = 1.0f - 2.0f * phase; break;
+                default: value = phase < 0.35f ? 1.0f : -1.0f; break;
+            }
+
+            const auto point = juce::Point<float> (waveArea.getX() + x * waveArea.getWidth(),
+                                                   waveArea.getCentreY() - value * waveArea.getHeight() * 0.43f);
+            if (i == 0)
+                path.startNewSubPath (point);
+            else
+                path.lineTo (point);
+        }
+
+        g.setColour (colour);
+        g.strokePath (path, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (colour.withAlpha (0.72f));
+        g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
+        g.drawText (label, area.getX(), isA ? area.getY() : area.getY() + 35.0f, 42, 12, juce::Justification::left);
+    }
+
     void refreshUserPresets()
     {
         if (userPresetCombo == nullptr)

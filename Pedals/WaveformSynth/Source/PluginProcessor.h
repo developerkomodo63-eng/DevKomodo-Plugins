@@ -60,7 +60,8 @@ private:
         float releaseTime = 0.20f;
         float env = 0.0f;
         float lastSample = 0.0f;
-        float filterState = 0.0f;
+        float filterStateL = 0.0f;
+        float filterStateR = 0.0f;
     };
 
     void buildWavetables();

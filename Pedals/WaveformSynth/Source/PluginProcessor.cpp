@@ -513,6 +513,8 @@ void WaveformSynthAudioProcessor::prepareToPlay (double newSampleRate, int sampl
         voice.amplitude = 0.0f;
         voice.env = 0.0f;
         voice.lastSample = 0.0f;
+        voice.filterStateL = 0.0f;
+        voice.filterStateR = 0.0f;
     }
 
     levelSmoothed.reset (newSampleRate, 0.02);
@@ -554,8 +556,10 @@ int WaveformSynthAudioProcessor::findReusableVoice (int midiNote) const
 
     if (voiceMode == 2) // Legato
     {
+        // Legato is a single continuous voice. Reusing only the same MIDI
+        // note accidentally turned it into a second polyphonic mode.
         for (int i = 0; i < (int) voices.size(); ++i)
-            if (voices[(size_t) i].active && voices[(size_t) i].midiNote == midiNote)
+            if (voices[(size_t) i].active)
                 return i;
     }
 
@@ -580,22 +584,31 @@ void WaveformSynthAudioProcessor::noteOn (int midiNote, float velocity)
     const int targetIndex = findReusableVoice (midiNote);
     auto& chosenVoice = voices[(size_t) targetIndex];
 
-    if (voiceMode == 1 && chosenVoice.active)
-    {
+    const bool legatoReuse = (voiceMode == 2 && chosenVoice.active);
+    const bool monoReuse = (voiceMode == 1 && chosenVoice.active);
+
+    if (monoReuse || legatoReuse)
         chosenVoice.releasing = false;
-    }
 
     chosenVoice.active = true;
     chosenVoice.releasing = false;
     chosenVoice.midiNote = midiNote;
     chosenVoice.targetFrequency = midiToFrequency (midiNote);
-    chosenVoice.frequency = chosenVoice.targetFrequency;
+    if (! monoReuse && ! legatoReuse)
+        chosenVoice.frequency = chosenVoice.targetFrequency;
     chosenVoice.velocity = juce::jlimit (0.0f, 1.0f, velocity);
-    chosenVoice.phase = 0.0f;
-    chosenVoice.env = 0.0001f;
-    chosenVoice.amplitude = 0.0f;
-    chosenVoice.lastSample = 0.0f;
-    chosenVoice.filterState = 0.0f;
+
+    // Mono and legato reuse the existing oscillator phase/envelope so Glide
+    // actually has a musical effect instead of being bypassed by noteOn.
+    if (! legatoReuse)
+    {
+        chosenVoice.phase = 0.0f;
+        chosenVoice.env = 0.0001f;
+        chosenVoice.amplitude = 0.0f;
+        chosenVoice.lastSample = 0.0f;
+        chosenVoice.filterStateL = 0.0f;
+        chosenVoice.filterStateR = 0.0f;
+    }
     chosenVoice.attackTime = juce::jlimit (0.001f, 2.0f, apvts.getRawParameterValue ("ATTACK")->load());
     chosenVoice.decayTime = juce::jlimit (0.001f, 2.0f, apvts.getRawParameterValue ("DECAY")->load());
     chosenVoice.sustainLevel = juce::jlimit (0.0f, 1.0f, apvts.getRawParameterValue ("SUSTAIN")->load());
@@ -704,14 +717,24 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     }
 #endif
 
+    // A synth owns its output. Clearing first prevents stale host-buffer data
+    // from becoming audible when no voice is currently active.
+    buffer.clear();
+
     for (const auto& event : midiMessages)
     {
         const auto message = event.getMessage();
 
         if (message.isNoteOn())
             noteOn (message.getNoteNumber(), message.getFloatVelocity());
-        else if (message.isNoteOff() || (message.isController() && message.getControllerNumber() == 123))
+        else if (message.isNoteOff())
             noteOff (message.getNoteNumber());
+        else if (message.isController() && message.getControllerNumber() == 123)
+        {
+            for (auto& voice : voices)
+                if (voice.active)
+                    voice.releasing = true;
+        }
     }
 
     const int oscABank = (int) apvts.getRawParameterValue ("OSC_A_BANK")->load();
@@ -730,7 +753,6 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float vibrato = apvts.getRawParameterValue ("VIBRATO")->load();
     const float modDepth = apvts.getRawParameterValue ("MOD_DEPTH")->load();
     const int filterMode = (int) apvts.getRawParameterValue ("FILTER_MODE")->load();
-    const int voiceMode = (int) apvts.getRawParameterValue ("VOICE_MODE")->load();
     const float glideMs = apvts.getRawParameterValue ("GLIDE")->load();
     const float unison = apvts.getRawParameterValue ("UNISON")->load();
     const float subLevel = apvts.getRawParameterValue ("SUB")->load();
@@ -749,7 +771,9 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float outputLevel = juce::Decibels::decibelsToGain (levelDb);
 
     const int numSamples = buffer.getNumSamples();
-    const int numChannels = juce::jmax (1, buffer.getNumChannels());
+    const int numChannels = buffer.getNumChannels();
+    if (numSamples <= 0 || numChannels <= 0)
+        return;
 
     const float attackTime = juce::jmax (0.001f, apvts.getRawParameterValue ("ATTACK")->load());
     const float decayTime = juce::jmax (0.001f, apvts.getRawParameterValue ("DECAY")->load());
@@ -763,117 +787,159 @@ void WaveformSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const float driveAmount = juce::jlimit (0.0f, 1.0f, drive);
     const float resonanceAmount = juce::jlimit (0.0f, 1.0f, resonance);
     const float unisonDepth = juce::jlimit (0.0f, 1.0f, unison);
+    const float safeSampleRate = (float) juce::jmax (1.0, sampleRate);
 
-    // Advance each voice once per sample. Processing the voice once per output
-    // channel doubles the oscillator rate and envelope speed in stereo.
-    for (int channel = 0; channel < juce::jmin (1, numChannels); ++channel)
+    float* left = buffer.getWritePointer (0);
+    float* right = numChannels > 1 ? buffer.getWritePointer (1) : nullptr;
+
+    for (int sample = 0; sample < numSamples; ++sample)
     {
-        float* channelData = buffer.getWritePointer (channel);
-        for (int sample = 0; sample < numSamples; ++sample)
+        float leftSum = 0.0f;
+        float rightSum = 0.0f;
+
+        for (auto& voice : voices)
         {
-            float sampleSum = 0.0f;
+            if (! voice.active)
+                continue;
 
-            for (auto& voice : voices)
+            voice.frequency += (voice.targetFrequency - voice.frequency) * glideCoeff;
+
+            const float detuneAmount = (detune * 0.5f) / 12.0f;
+            const float driftAmount = drift * 0.12f;
+            const float vibratoAmount = vibrato * 0.018f;
+            const float modulationDepth = modDepth * 0.025f;
+            const float driftedDetune = detuneAmount
+                + std::sin ((float) sample * 0.013f + voice.phase * 4.0f) * driftAmount;
+            const float modulation = std::sin ((float) sample * 0.0038f
+                + voice.midiNote * 0.07f + voice.phase * 6.0f)
+                * (vibratoAmount + modulationDepth);
+            const float freq = juce::jmax (1.0f,
+                voice.frequency * std::pow (2.0f, driftedDetune + modulation));
+            const float phaseStep = freq / safeSampleRate;
+
+            voice.phase += phaseStep;
+            voice.phase -= std::floor (voice.phase);
+
+            if (voice.releasing)
             {
-                if (! voice.active)
+                voice.env = std::max (0.0f, voice.env - releaseCoeff);
+                if (voice.env <= 0.0001f)
+                {
+                    voice.active = false;
+                    voice.releasing = false;
+                    voice.env = 0.0f;
                     continue;
-
-                voice.frequency += (voice.targetFrequency - voice.frequency) * glideCoeff;
-
-                const float detuneAmount = (detune * 0.5f) / 12.0f;
-                const float driftAmount = drift * 0.12f;
-                const float vibratoAmount = vibrato * 0.018f;
-                const float modulationDepth = modDepth * 0.025f;
-                const float driftedDetune = detuneAmount + std::sin ((float) sample * 0.013f + voice.phase * 4.0f) * driftAmount;
-                const float modulation = std::sin ((float) sample * 0.0038f + voice.midiNote * 0.07f + voice.phase * 6.0f) * (vibratoAmount + modulationDepth);
-                const float freq = voice.frequency * std::pow (2.0f, driftedDetune + modulation);
-                const float phaseStep = freq / (float) sampleRate;
-
-                voice.phase += phaseStep;
-                if (voice.phase >= 1.0f)
-                    voice.phase -= 1.0f;
-
-                const float stereoPhase = voice.phase + ((channel == 0) ? 0.0f : (spread * 0.12f)) - ((channel == 1) ? 0.0f : (spread * 0.12f));
-                const float globalMorph = juce::jlimit (0.0f, 1.0f, position + std::sin (voice.phase * juce::MathConstants<float>::twoPi) * 0.10f);
-                const float morphBias = (waveMorph - 0.5f) * 0.8f;
-                const float oscAMorph = juce::jlimit (0.0f, 1.0f, oscAPosition + std::sin (voice.phase * juce::MathConstants<float>::twoPi + 0.5f) * 0.14f + morphBias);
-                const float oscBMorph = juce::jlimit (0.0f, 1.0f, oscBPosition + std::sin (voice.phase * juce::MathConstants<float>::twoPi + 1.4f) * 0.14f - morphBias);
-                const float oscAIndex = juce::jlimit (0.0f, (float) wavetableCount - 1.0f, (float) oscAWaveform + globalMorph * 0.35f + oscAMorph * 0.40f + waveMorph * 0.26f);
-                const float oscBIndex = juce::jlimit (0.0f, (float) wavetableCount - 1.0f, (float) oscBWaveform + globalMorph * 0.35f + oscBMorph * 0.40f + (1.0f - waveMorph) * 0.24f);
-
-                const float oscAPhaseShift = oscAPhase * 0.75f;
-                const float oscBPhaseShift = oscBPhase * 0.75f;
-                const float syncAmount = juce::jlimit (0.0f, 1.0f, oscSync);
-                const float oscASync = wavetableSample (stereoPhase + oscAPhaseShift, juce::jlimit (0.0f, 1.0f, oscAIndex / (float) (wavetableCount - 1) + syncAmount * 0.025f), driftedDetune * 0.07f, oscABank) * 0.75f;
-                const float oscBSync = wavetableSample (stereoPhase + 0.18f + oscBPhaseShift + spread * 0.12f, juce::jlimit (0.0f, 1.0f, oscBIndex / (float) (wavetableCount - 1) + syncAmount * 0.028f), (driftedDetune + 0.8f) * 0.10f, oscBBank) * 0.72f;
-                const float unisonOsc = wavetableSample (stereoPhase + 0.15f + oscAPhaseShift + spread * 0.10f, oscAIndex / (float) (wavetableCount - 1), (driftedDetune + 0.5f) * 0.10f, oscABank) * (0.30f * unisonDepth);
-                const float subOsc = std::sin (voice.phase * juce::MathConstants<float>::twoPi * 0.5f) * (0.42f * subLevel);
-                const float noiseTone = std::sin (voice.phase * 131.0f + (float) sample * 0.31f) * noiseAmount * 0.22f;
-                float osc = (oscASync * (1.0f - mix)) + (oscBSync * mix) + unisonOsc + subOsc + noiseTone;
-
-                if (voice.releasing)
-                {
-                    voice.env = std::max (0.0f, voice.env - releaseCoeff);
-                    if (voice.env <= 0.0001f)
-                    {
-                        voice.active = false;
-                        voice.releasing = false;
-                        voice.env = 0.0f;
-                    }
                 }
+            }
+            else
+            {
+                if (voice.env < 1.0f)
+                    voice.env = juce::jmin (1.0f, voice.env + attackCoeff * (1.0f - voice.env));
                 else
-                {
-                    if (voice.env < 1.0f)
-                        voice.env = juce::jmin (1.0f, voice.env + attackCoeff * (1.0f - voice.env));
-                    else
-                        voice.env = juce::jmax (sustainLevel, voice.env - decayCoeff * (voice.env - sustainLevel));
-                }
+                    voice.env = juce::jmax (sustainLevel,
+                        voice.env - decayCoeff * (voice.env - sustainLevel));
+            }
 
-                const float toneDrive = 1.0f + driveAmount * 2.2f + warmth * 1.2f + unisonDepth * 0.55f + character * 0.5f;
-                const float distorted = std::tanh (osc * toneDrive);
-                const float cutoffValue = juce::jlimit (100.0f, 18000.0f, cutoffHz * (0.72f + position * 1.10f + warmth * 0.22f + character * 0.18f + air * 0.12f) * (0.80f + voice.env * 0.55f));
-                const float filterCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * (cutoffValue / (float) sampleRate));
-                const float filterDriveAmount = juce::jlimit (0.0f, 1.0f, filterDrive);
+            const float globalMorph = juce::jlimit (0.0f, 1.0f,
+                position + std::sin (voice.phase * juce::MathConstants<float>::twoPi) * 0.10f);
+            const float morphBias = (waveMorph - 0.5f) * 0.8f;
+            const float oscAMorph = juce::jlimit (0.0f, 1.0f,
+                oscAPosition + std::sin (voice.phase * juce::MathConstants<float>::twoPi + 0.5f) * 0.14f + morphBias);
+            const float oscBMorph = juce::jlimit (0.0f, 1.0f,
+                oscBPosition + std::sin (voice.phase * juce::MathConstants<float>::twoPi + 1.4f) * 0.14f - morphBias);
+            const float oscAIndex = juce::jlimit (0.0f, (float) wavetableCount - 1.0f,
+                (float) oscAWaveform + globalMorph * 0.35f + oscAMorph * 0.40f + waveMorph * 0.26f);
+            const float oscBIndex = juce::jlimit (0.0f, (float) wavetableCount - 1.0f,
+                (float) oscBWaveform + globalMorph * 0.35f + oscBMorph * 0.40f + (1.0f - waveMorph) * 0.24f);
+
+            const float oscAPhaseShift = oscAPhase * 0.75f;
+            const float oscBPhaseShift = oscBPhase * 0.75f;
+            const float syncAmount = juce::jlimit (0.0f, 1.0f, oscSync);
+            const float toneDrive = 1.0f + driveAmount * 2.2f + warmth * 1.2f
+                + unisonDepth * 0.55f + character * 0.5f;
+            const float cutoffValue = juce::jlimit (100.0f, 18000.0f,
+                cutoffHz * (0.72f + position * 1.10f + warmth * 0.22f
+                    + character * 0.18f + air * 0.12f) * (0.80f + voice.env * 0.55f));
+            const float filterCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi
+                * (cutoffValue / safeSampleRate));
+            const float filterDriveAmount = juce::jlimit (0.0f, 1.0f, filterDrive);
+
+            auto renderChannel = [&] (float phaseOffset, float& filterState) -> float
+            {
+                const float oscASync = wavetableSample (
+                    voice.phase + phaseOffset + oscAPhaseShift,
+                    juce::jlimit (0.0f, 1.0f,
+                        oscAIndex / (float) (wavetableCount - 1) + syncAmount * 0.025f),
+                    driftedDetune * 0.07f, oscABank) * 0.75f;
+                const float oscBSync = wavetableSample (
+                    voice.phase + phaseOffset + 0.18f + oscBPhaseShift + spread * 0.12f,
+                    juce::jlimit (0.0f, 1.0f,
+                        oscBIndex / (float) (wavetableCount - 1) + syncAmount * 0.028f),
+                    (driftedDetune + 0.8f) * 0.10f, oscBBank) * 0.72f;
+                const float unisonOsc = wavetableSample (
+                    voice.phase + phaseOffset + 0.15f + oscAPhaseShift + spread * 0.10f,
+                    oscAIndex / (float) (wavetableCount - 1),
+                    (driftedDetune + 0.5f) * 0.10f, oscABank) * (0.30f * unisonDepth);
+                const float subOsc = std::sin (voice.phase * juce::MathConstants<float>::twoPi * 0.5f)
+                    * (0.42f * subLevel);
+                const float noiseTone = std::sin (voice.phase * 131.0f + (float) sample * 0.31f)
+                    * noiseAmount * 0.22f;
+                const float source = (oscASync * (1.0f - mix)) + (oscBSync * mix)
+                    + unisonOsc + subOsc + noiseTone;
+                const float distorted = std::tanh (source * toneDrive);
 
                 float filtered = distorted;
                 switch (filterMode)
                 {
                     case 1: // BP
-                        filtered = distorted - voice.filterState;
-                        voice.filterState += filterCoeff * filtered;
-                        filtered = voice.filterState;
+                        filtered = distorted - filterState;
+                        filterState += filterCoeff * filtered;
+                        filtered = filterState;
                         break;
                     case 2: // HP
-                        filtered = distorted - voice.filterState;
-                        voice.filterState += filterCoeff * filtered;
-                        filtered = distorted - voice.filterState;
+                        filtered = distorted - filterState;
+                        filterState += filterCoeff * filtered;
+                        filtered = distorted - filterState;
                         break;
                     case 3: // Notch
-                        filtered = distorted - voice.filterState;
-                        voice.filterState += filterCoeff * filtered;
-                        filtered = distorted - voice.filterState + resonanceAmount * (voice.filterState - distorted);
+                        filtered = distorted - filterState;
+                        filterState += filterCoeff * filtered;
+                        filtered = distorted - filterState
+                            + resonanceAmount * (filterState - distorted);
                         break;
                     default: // LP
-                        filtered = distorted + resonanceAmount * (voice.filterState - distorted);
-                        voice.filterState = (filtered * filterCoeff) + (voice.filterState * (1.0f - filterCoeff));
-                        filtered = voice.filterState;
+                        filtered = distorted + resonanceAmount * (filterState - distorted);
+                        filterState = filtered * filterCoeff + filterState * (1.0f - filterCoeff);
+                        filtered = filterState;
                         break;
                 }
 
                 filtered *= 1.0f + filterDriveAmount * 0.45f;
-                filtered = std::tanh (filtered * (1.0f + filterDriveAmount * 0.35f));
-                osc = filtered;
-                sampleSum += osc * voice.env * (0.18f * voice.velocity);
-            }
+                return std::tanh (filtered * (1.0f + filterDriveAmount * 0.35f));
+            };
 
-            const float stereoBalance = (channel == 0 ? -1.0f : 1.0f) * width * 0.35f;
-            const float finalSample = juce::jlimit (-1.0f, 1.0f, sampleSum * (1.0f + stereoBalance) * outputLevel * 0.9f);
-            channelData[sample] = finalSample;
+            const float stereoSpread = spread * 0.12f;
+            const float leftOsc = renderChannel (-stereoSpread, voice.filterStateL);
+            const float rightOsc = renderChannel (stereoSpread, voice.filterStateR);
+            const float voiceGain = voice.env * (0.18f * voice.velocity);
+            leftSum += leftOsc * voiceGain;
+            rightSum += rightOsc * voiceGain;
         }
-    }
 
-    for (int channel = 1; channel < numChannels; ++channel)
-        buffer.copyFrom (channel, 0, buffer, 0, 0, numSamples);
+        const float mid = 0.5f * (leftSum + rightSum);
+        const float side = 0.5f * (leftSum - rightSum) * juce::jlimit (0.0f, 1.0f, width);
+        const float finalLeft = juce::jlimit (-1.0f, 1.0f,
+            (mid + side) * outputLevel * 0.9f);
+        const float finalRight = juce::jlimit (-1.0f, 1.0f,
+            (mid - side) * outputLevel * 0.9f);
+
+        left[sample] = finalLeft;
+        if (right != nullptr)
+            right[sample] = finalRight;
+
+        for (int channel = 2; channel < numChannels; ++channel)
+            buffer.setSample (channel, sample, mid * outputLevel * 0.9f);
+    }
 }
 
 void WaveformSynthAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

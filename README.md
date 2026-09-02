@@ -60,8 +60,18 @@ credentials, while tagged or manually dispatched releases use them when set.
 
 Requires CMake 3.22+ and a C++ toolchain. JUCE is fetched automatically via CMake `FetchContent` at configure time (see `CMakeLists.txt`).
 
+On Windows, the plugin must be built as a 64-bit VST3. FL Studio will reject a 32-bit or mismatched binary even if the code compiles successfully.
+
 ```
-cmake -B build
-cmake --build build --config Release
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --target WaveformSynth_VST3
 ```
+
+Then copy the generated `.vst3` bundle to:
+
+```
+C:\Program Files\Common Files\VST3\
+```
+
+and rescan your plugins in FL Studio.
 

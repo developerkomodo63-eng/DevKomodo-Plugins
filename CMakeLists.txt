@@ -15,6 +15,13 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR
+        "DevKomodo VST3 plugins must be built as 64-bit for FL Studio and modern DAWs. "
+        "Reconfigure with: cmake -S . -B build -G \"Visual Studio 17 2022\" -A x64"
+    )
+endif()
+
 # Keep the package lean for GitHub runners and shipping builds.
 # LTO is enabled per JUCE target below; enabling global IPO as well can
 # duplicate/conflict with JUCE's recommended LTO flags on MSVC.

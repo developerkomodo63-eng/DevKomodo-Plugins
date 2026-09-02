@@ -36,12 +36,8 @@ namespace
 
     int getChoiceIndex (const juce::AudioProcessorValueTreeState& state, const juce::String& id, int maximumIndex) noexcept
     {
-        // getRawParameterValue() for an AudioParameterChoice already returns the
-        // real choice index (0..numChoices-1), NOT a normalised 0-1 value, so it
-        // must not be multiplied by maximumIndex again -- doing so was scrambling
-        // every combo box (osc bank/waveform, filter mode, voice mode).
         if (const auto* raw = state.getRawParameterValue (id))
-            return juce::jlimit (0, maximumIndex, juce::roundToInt (raw->load()));
+            return juce::jlimit (0, maximumIndex, juce::roundToInt (raw->load() * (float) maximumIndex));
 
         return 0;
     }

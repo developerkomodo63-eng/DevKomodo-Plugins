@@ -52,6 +52,23 @@ jobs:
           Write-Host "Waveform Synth VST3: $($vst3[0].FullName)"
           Write-Host "Binary: $($binary.FullName)"
 
+      - name: Run pluginval
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip" `
+            -OutFile "$env:RUNNER_TEMP/pluginval.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP/pluginval.zip" -DestinationPath "$env:RUNNER_TEMP/pluginval" -Force
+          $pluginval = Get-ChildItem -Path "$env:RUNNER_TEMP/pluginval" -Filter "pluginval.exe" -Recurse | Select-Object -First 1
+          if ($null -eq $pluginval) {
+            Write-Error "pluginval.exe was not found in the downloaded archive."
+            exit 1
+          }
+          & $pluginval.FullName --strictness-level 5 --validate $vst3[0].FullName
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
       - name: Collect VST3 artifact
         shell: pwsh
         run: |

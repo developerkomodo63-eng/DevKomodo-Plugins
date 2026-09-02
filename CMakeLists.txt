@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "MSVC runtime library" FORCE)
+endif()
+
 option(DEVKOMODO_DEMO_BUILD "Build the time-limited commercial demo" OFF)
 if(DEVKOMODO_DEMO_BUILD)
     add_compile_definitions(DEVKOMODO_DEMO_BUILD=1)

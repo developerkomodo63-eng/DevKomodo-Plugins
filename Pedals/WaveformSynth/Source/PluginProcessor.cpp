@@ -979,16 +979,23 @@ void WaveformSynthAudioProcessor::getStateInformation (juce::MemoryBlock& destDa
 
 void WaveformSynthAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (data == nullptr || sizeInBytes <= 0)
+        return;
+
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
     if (xmlState.get() != nullptr)
     {
         auto state = juce::ValueTree::fromXml (*xmlState);
         if (state.isValid() && state.hasType (apvts.state.getType()))
         {
+            auto restoredCustomPresets = state.getChildWithName ("CustomPresets");
+            if (restoredCustomPresets.isValid())
+                state.removeChild (restoredCustomPresets, nullptr);
+
             apvts.replaceState (state);
-            customPresets = state.getChildWithName ("CustomPresets");
-            if (! customPresets.isValid())
-                customPresets = juce::ValueTree ("CustomPresets");
+            customPresets = restoredCustomPresets.isValid()
+                                ? restoredCustomPresets
+                                : juce::ValueTree ("CustomPresets");
         }
     }
 }

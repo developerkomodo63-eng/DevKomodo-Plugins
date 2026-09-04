@@ -31,12 +31,24 @@ jobs:
       - name: Validate Waveform Synth VST3
         shell: pwsh
         run: |
-          $vst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Filter "Waveform Synth.vst3" -ErrorAction SilentlyContinue)
+          # JUCE can place the VST3 bundle in the target's *_artefacts tree and
+          # the filesystem name may follow the target name even when PRODUCT_NAME
+          # is set. Do not make validation depend on one exact intermediate name.
+          $allVst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Filter "*.vst3" -ErrorAction SilentlyContinue)
+          $vst3 = @($allVst3 | Where-Object {
+            $_.Name -like "*Waveform*" -or $_.FullName -match "[\\/]WaveformSynth[\\/]"
+          })
 
           if ($vst3.Count -ne 1) {
-            Write-Error "Expected exactly one Waveform Synth.vst3 bundle, found $($vst3.Count)."
-            Get-ChildItem -Path "build" -Recurse -Directory -Filter "*.vst3" -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host $_.FullName
+            Write-Error "Expected exactly one Waveform Synth VST3 bundle, found $($vst3.Count)."
+            if ($allVst3.Count -eq 0) {
+              Write-Host "No .vst3 bundle was found anywhere under build."
+              Get-ChildItem -Path "build" -Recurse -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match "artefacts|VST3|WaveformSynth" } |
+                Select-Object -First 100 FullName | ForEach-Object { Write-Host $_.FullName }
+            } else {
+              Write-Host "All VST3 bundles found:"
+              $allVst3 | ForEach-Object { Write-Host $_.FullName }
             }
             exit 1
           }

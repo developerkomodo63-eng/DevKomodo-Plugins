@@ -10,6 +10,10 @@ juce_add_plugin(WaveformSynth
     FORMATS                     ${DEVKOMODO_PLUGIN_FORMATS}
     PRODUCT_NAME                "Waveform Synth")
 
+# Keep the generated VST3 product name stable for CI validation and shipping.
+set_target_properties(WaveformSynth PROPERTIES
+    OUTPUT_NAME "Waveform Synth")
+
 target_sources(WaveformSynth
     PRIVATE
         Source/PluginProcessor.cpp)

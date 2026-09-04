@@ -18,6 +18,7 @@ jobs:
         shell: pwsh
         run: >-
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DDEVKOMODO_ACTIVE_PLUGIN=WaveformSynth
           -DCMAKE_CXX_STANDARD=17
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
@@ -25,7 +26,7 @@ jobs:
 
       - name: Build Waveform Synth (Release)
         shell: pwsh
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --target WaveformSynth --parallel
 
       - name: Validate Waveform Synth VST3
         shell: pwsh
@@ -49,6 +50,7 @@ jobs:
             exit 1
           }
 
+          "WAVEFORM_SYNTH_VST3=$($vst3[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Waveform Synth VST3: $($vst3[0].FullName)"
           Write-Host "Binary: $($binary.FullName)"
 
@@ -64,7 +66,11 @@ jobs:
             Write-Error "pluginval.exe was not found in the downloaded archive."
             exit 1
           }
-          & $pluginval.FullName --strictness-level 5 --validate $vst3[0].FullName
+          if ([string]::IsNullOrWhiteSpace($env:WAVEFORM_SYNTH_VST3)) {
+            Write-Error "WAVEFORM_SYNTH_VST3 is not set."
+            exit 1
+          }
+          & $pluginval.FullName --strictness-level 5 --validate $env:WAVEFORM_SYNTH_VST3
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -73,8 +79,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "artifacts" | Out-Null
-          $vst3 = Get-ChildItem -Path "build" -Recurse -Directory -Filter "Waveform Synth.vst3" | Select-Object -First 1
-          Copy-Item -Path $vst3.FullName -Destination "artifacts/Waveform Synth.vst3" -Recurse -Force
+          if ([string]::IsNullOrWhiteSpace($env:WAVEFORM_SYNTH_VST3)) {
+            Write-Error "WAVEFORM_SYNTH_VST3 is not set."
+            exit 1
+          }
+          Copy-Item -Path $env:WAVEFORM_SYNTH_VST3 -Destination "artifacts/Waveform Synth.vst3" -Recurse -Force
 
       - name: Upload Waveform Synth VST3
         uses: actions/upload-artifact@v4

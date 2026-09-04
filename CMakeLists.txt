@@ -50,5 +50,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 # Build only the active plugin target.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Pedals/JunoEmu")
+set(DEVKOMODO_ACTIVE_PLUGIN "JunoEmu" CACHE STRING "Plugin target folder in Pedals/")
+set(_devkomodo_active_plugin_dir "${CMAKE_CURRENT_SOURCE_DIR}/Pedals/${DEVKOMODO_ACTIVE_PLUGIN}")
 
+if(NOT EXISTS "${_devkomodo_active_plugin_dir}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "DEVKOMODO_ACTIVE_PLUGIN='${DEVKOMODO_ACTIVE_PLUGIN}' is invalid. "
+        "Expected ${_devkomodo_active_plugin_dir}/CMakeLists.txt to exist."
+    )
+endif()
+
+add_subdirectory("${_devkomodo_active_plugin_dir}")

@@ -193,11 +193,10 @@ void JunoEmuAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         rp.dryLevel = 1.0f - reverbMix * 0.22f;
         rp.width = parameter (apvts, "WIDTH", 0.72f);
         reverb.setParameters (rp);
-        if (buffer.getNumChannels() > 1)
-            reverb.processStereo (buffer.getWritePointer (0), buffer.getWritePointer (1),
-                                  buffer.getNumSamples());
-        else
-            reverb.processMono (buffer.getWritePointer (0), buffer.getNumSamples());
+
+        juce::dsp::AudioBlock<float> block (buffer);
+        juce::dsp::ProcessContextReplacing<float> context (block);
+        reverb.process (context);
     }
 
     // Modern stereo widening is intentionally conservative and mono-safe.

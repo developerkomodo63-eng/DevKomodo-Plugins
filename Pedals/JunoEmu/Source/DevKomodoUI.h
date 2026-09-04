@@ -734,6 +734,8 @@ private:
                 { 2, 0.48f, 0.80f, 0.65f, 0.18f, 0.55f, 0.35f, 2, 0.42f, 320, 0.38f, 0.18f, 0.12f }
             };
             const char* ids[13] = { "WAVE","PULSE","PWM_RATE","UNISON","DETUNE","DRIFT","FILTER_DRIVE","CHORUS","CHORUS_MIX","DELAY_TIME","DELAY_FEEDBACK","DELAY_MIX","REVERB_MIX" };
+            std::vector<Preset> result;
+            result.reserve (4);
             for (int presetIndex = 0; presetIndex < 4; ++presetIndex)
             {
                 Preset p;

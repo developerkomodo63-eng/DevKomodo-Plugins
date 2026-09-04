@@ -4,6 +4,10 @@
 
 class WaveformSynthAudioProcessor;
 
+//==============================================================================
+// Shared visual language for the plugin: dark panel background, soft rounded
+// controls, one accent colour used for focus/selection/active states.
+//==============================================================================
 class WaveformSynthLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -96,16 +100,22 @@ public:
         g.drawFittedText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, 1);
     }
 
-    static inline const juce::Colour bg      = juce::Colour::fromRGB (8, 10, 14);
-    static inline const juce::Colour panel   = juce::Colour::fromRGB (17, 20, 27);
-    static inline const juce::Colour panel2  = juce::Colour::fromRGB (22, 26, 34);
-    static inline const juce::Colour border  = juce::Colour::fromRGB (55, 61, 73);
-    static inline const juce::Colour text    = juce::Colour::fromRGB (239, 242, 248);
-    static inline const juce::Colour accent  = juce::Colour::fromRGB (126, 102, 255);
+    static inline const juce::Colour bg       = juce::Colour::fromRGB (8, 10, 14);
+    static inline const juce::Colour panel    = juce::Colour::fromRGB (17, 20, 27);
+    static inline const juce::Colour panel2   = juce::Colour::fromRGB (22, 26, 34);
+    static inline const juce::Colour border   = juce::Colour::fromRGB (55, 61, 73);
+    static inline const juce::Colour text     = juce::Colour::fromRGB (239, 242, 248);
+    static inline const juce::Colour accent   = juce::Colour::fromRGB (126, 102, 255);
+    static inline const juce::Colour accentB  = juce::Colour::fromRGB (91, 208, 190);
 };
 
-class WaveformSynthEditor final : public juce::AudioProcessorEditor
+//==============================================================================
+class WaveformSynthEditor final : public juce::AudioProcessorEditor,
+                                   private juce::Timer
 {
+    // A single grid page inside the tabbed area. Purely a layout container;
+    // the actual sliders/combos it holds are owned elsewhere (see sliders /
+    // comboBoxes below) so Page never has to worry about deleting them.
     class Page final : public juce::Component
     {
     public:
@@ -141,7 +151,7 @@ class WaveformSynthEditor final : public juce::AudioProcessorEditor
         }
 
     private:
-        juce::Array<juce::Component*> controls;
+        juce::Array<juce::Component*> controls; // non-owning
     };
 
 public:
@@ -150,8 +160,7 @@ public:
     {
         setOpaque (true);
         setResizable (true, true);
-        setResizeLimits (820, 620, 1500, 1100);
-        setSize (1120, 760);
+        setResizeLimits (820, 660, 1500, 1140);
         setLookAndFeel (&lookAndFeel);
 
         title.setText ("WAVEFORM", juce::dontSendNotification);
@@ -164,13 +173,21 @@ public:
         subtitle.setColour (juce::Label::textColourId, WaveformSynthLookAndFeel::accent);
         addAndMakeVisible (subtitle);
 
+        // IMPORTANT: every child control referenced from resized()/paint() must
+        // already exist before setSize() is called below, because setSize()
+        // triggers resized() immediately.
         setupPresetBar();
         buildPages();
         addAndMakeVisible (tabs);
+
+        startTimerHz (20); // drives the live oscillator preview
+
+        setSize (1120, 800);
     }
 
     ~WaveformSynthEditor() override
     {
+        stopTimer();
         setLookAndFeel (nullptr);
     }
 
@@ -178,6 +195,7 @@ public:
     {
         g.fillAll (WaveformSynthLookAndFeel::bg);
 
+        // Header bar (title + preset controls)
         auto top = juce::Rectangle<float> (14.0f, 14.0f, (float) getWidth() - 28.0f, 70.0f);
         g.setColour (WaveformSynthLookAndFeel::panel);
         g.fillRoundedRectangle (top, 12.0f);
@@ -187,6 +205,15 @@ public:
         auto accentLine = top.removeFromLeft (4.0f).reduced (0.0f, 12.0f);
         g.setColour (WaveformSynthLookAndFeel::accent);
         g.fillRoundedRectangle (accentLine, 2.0f);
+
+        // Oscillator preview scope
+        auto scope = getScopeBounds();
+        g.setColour (WaveformSynthLookAndFeel::panel);
+        g.fillRoundedRectangle (scope, 10.0f);
+        g.setColour (WaveformSynthLookAndFeel::border.withAlpha (0.7f));
+        g.drawRoundedRectangle (scope, 10.0f, 1.0f);
+
+        drawOscilloscope (g, scope.reduced (14.0f, 10.0f));
     }
 
     void resized() override
@@ -208,13 +235,16 @@ public:
         savePresetButton->setBounds (right - presetW - gap * 2 - nameW - buttonW, barY, buttonW, barH);
         deletePresetButton->setBounds (right - presetW - gap * 3 - nameW - buttonW * 2, barY, buttonW, barH);
 
-        tabs.setBounds (14, 94, getWidth() - 28, getHeight() - 108);
+        auto scope = getScopeBounds();
+        const int tabsTop = (int) scope.getBottom() + 10;
+        tabs.setBounds (14, tabsTop, getWidth() - 28, getHeight() - tabsTop - 14);
     }
 
 private:
+    //== construction helpers =================================================
     void setupPresetBar()
     {
-        presetCombo = new juce::ComboBox();
+        presetCombo = std::make_unique<juce::ComboBox>();
         const juce::StringArray presets { "Sub Bass", "Analog Lead", "Soft Pad", "Pluck", "Dirty Saw", "Hybrid Texture", "Glass Arp", "Bass Drone" };
         for (int i = 0; i < presets.size(); ++i)
             presetCombo->addItem (presets[i], i + 1);
@@ -222,7 +252,7 @@ private:
         presetCombo->setTextWhenNothingSelected ("Factory preset");
         presetCombo->onChange = [this] { processor.applyPreset (presetCombo->getSelectedId() - 1); };
         presetCombo->setLookAndFeel (&lookAndFeel);
-        addAndMakeVisible (presetCombo);
+        addAndMakeVisible (*presetCombo);
 
         userPresetName.setMultiLine (false);
         userPresetName.setText ("My Preset", false);
@@ -232,18 +262,18 @@ private:
         userPresetName.setColour (juce::TextEditor::textColourId, WaveformSynthLookAndFeel::text);
         addAndMakeVisible (userPresetName);
 
-        savePresetButton = new juce::TextButton ("SAVE");
-        deletePresetButton = new juce::TextButton ("DELETE");
-        for (auto* b : { savePresetButton, deletePresetButton })
+        savePresetButton = std::make_unique<juce::TextButton> ("SAVE");
+        deletePresetButton = std::make_unique<juce::TextButton> ("DELETE");
+        for (auto* b : { savePresetButton.get(), deletePresetButton.get() })
         {
             b->setLookAndFeel (&lookAndFeel);
             addAndMakeVisible (b);
         }
 
-        userPresetCombo = new juce::ComboBox();
+        userPresetCombo = std::make_unique<juce::ComboBox>();
         userPresetCombo->setTextWhenNothingSelected ("Custom presets");
         userPresetCombo->setLookAndFeel (&lookAndFeel);
-        addAndMakeVisible (userPresetCombo);
+        addAndMakeVisible (*userPresetCombo);
 
         savePresetButton->onClick = [this]
         {
@@ -374,20 +404,106 @@ private:
             userPresetCombo->addItem (names[i], i + 1);
     }
 
+    //== oscilloscope preview ==================================================
+    juce::Rectangle<float> getScopeBounds() const
+    {
+        return { 14.0f, 92.0f, (float) getWidth() - 28.0f, 84.0f };
+    }
+
+    // Cheap, dependency-free approximation of each wavetable bank's shape,
+    // purely for the on-screen preview -- this does NOT touch the audio
+    // engine or its actual wavetables, so it can never affect playback.
+    static float previewShape (int waveform, float phase)
+    {
+        switch (juce::jlimit (0, 9, waveform))
+        {
+            case 0: return std::sin (juce::MathConstants<float>::twoPi * phase);
+            case 1: return 2.0f * phase - 1.0f;
+            case 2: return phase < 0.5f ? 1.0f : -1.0f;
+            case 3: return 1.0f - 4.0f * std::abs (phase - 0.5f);
+            case 4: return phase < 0.25f ? 1.0f : -1.0f;
+            case 5: return 0.7f * (2.0f * phase - 1.0f)
+                          + 0.3f * std::sin (juce::MathConstants<float>::twoPi * phase);
+            case 6: return 0.65f * std::sin (juce::MathConstants<float>::twoPi * phase)
+                          + 0.35f * std::sin (juce::MathConstants<float>::twoPi * phase * 3.0f);
+            case 7: return std::sin (juce::MathConstants<float>::twoPi * phase)
+                          * (1.0f - 0.35f * std::abs (std::sin (juce::MathConstants<float>::twoPi * phase * 2.0f)));
+            case 8: return 1.0f - 2.0f * phase;
+            default: return phase < 0.35f ? 1.0f : -1.0f;
+        }
+    }
+
+    void drawOneWave (juce::Graphics& g, juce::Rectangle<float> area, int waveform,
+                      juce::Colour colour, const juce::String& label) const
+    {
+        g.setColour (WaveformSynthLookAndFeel::border.withAlpha (0.35f));
+        g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
+
+        juce::Path path;
+        constexpr int points = 160;
+        for (int i = 0; i < points; ++i)
+        {
+            const float x = (float) i / (float) (points - 1);
+            const float value = previewShape (waveform, x);
+            const auto pt = juce::Point<float> (area.getX() + x * area.getWidth(),
+                                                area.getCentreY() - value * area.getHeight() * 0.42f);
+            if (i == 0) path.startNewSubPath (pt);
+            else        path.lineTo (pt);
+        }
+
+        g.setColour (colour);
+        g.strokePath (path, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        g.setColour (colour.withAlpha (0.85f));
+        g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
+        g.drawText (label, area.getX(), area.getY() - 12.0f, 60.0f, 12.0f, juce::Justification::left);
+    }
+
+    void drawOscilloscope (juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        const int waveA = (int) apvts.getRawParameterValue ("OSC_A_WAVEFORM")->load();
+        const int waveB = (int) apvts.getRawParameterValue ("OSC_B_WAVEFORM")->load();
+
+        auto left  = area.removeFromLeft (area.getWidth() * 0.5f).reduced (10.0f, 0.0f);
+        auto right = area.reduced (10.0f, 0.0f);
+
+        drawOneWave (g, left,  waveA, WaveformSynthLookAndFeel::accent,  "OSC A");
+        drawOneWave (g, right, waveB, WaveformSynthLookAndFeel::accentB, "OSC B");
+    }
+
+    void timerCallback() override
+    {
+        repaint (getScopeBounds().toNearestInt());
+    }
+
+    //== members ================================================================
+    // Declaration order below is deliberate and load-bearing:
+    //   1) lookAndFeel must outlive every control that points to it.
+    //   2) presetCombo/userPresetCombo/savePresetButton/deletePresetButton are
+    //      unique_ptr so they're never leaked and always destroyed cleanly.
+    //   3) pages/sliders/comboBoxes must be destroyed BEFORE tabs is destroyed
+    //      is wrong -- it's the other way around: tabs must be torn down while
+    //      the Page objects it references are still valid, so tabs is declared
+    //      AFTER pages/sliders/comboBoxes (members destruct in REVERSE
+    //      declaration order, so the last-declared member is destroyed first).
+    //   4) sliderAttachments/comboBoxAttachments must be destroyed before the
+    //      sliders/combos they attach to, so they're declared last.
     WaveformSynthAudioProcessor& processor;
     juce::AudioProcessorValueTreeState& apvts;
     WaveformSynthLookAndFeel lookAndFeel;
 
     juce::Label title, subtitle;
-    juce::ComboBox* presetCombo = nullptr;
-    juce::ComboBox* userPresetCombo = nullptr;
-    juce::TextButton* savePresetButton = nullptr;
-    juce::TextButton* deletePresetButton = nullptr;
+    std::unique_ptr<juce::ComboBox> presetCombo;
+    std::unique_ptr<juce::ComboBox> userPresetCombo;
+    std::unique_ptr<juce::TextButton> savePresetButton;
+    std::unique_ptr<juce::TextButton> deletePresetButton;
     juce::TextEditor userPresetName;
-    juce::TabbedComponent tabs;
+
     juce::OwnedArray<Page> pages;
     juce::OwnedArray<juce::Slider> sliders;
     juce::OwnedArray<juce::ComboBox> comboBoxes;
+    juce::TabbedComponent tabs;
+
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboBoxAttachments;
 };

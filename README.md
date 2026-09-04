@@ -75,3 +75,8 @@ C:\Program Files\Common Files\VST3\
 
 and rescan your plugins in FL Studio.
 
+
+
+## Juno Emu
+
+Juno-style polyphonic synth instrument with a single DCO path (saw/pulse/PWM), sub oscillator, noise, dedicated HPF, 4-pole low-pass VCF with envelope modulation, ADSR, vibrato and two chorus modes. Built as a native JUCE VST3 and included in the active GitHub Actions build.

@@ -33,8 +33,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(JUCE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(JUCE_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
-# Keep the active build focused on the wavetable synth until the remaining
-# plugin targets are ready for full CI coverage.
+# Keep the active build focused on the current instrument target for lean CI.
 if(WIN32)
     set(DEVKOMODO_PLUGIN_FORMATS VST3)
 else()
@@ -51,5 +50,5 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 # Build only the active plugin target.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Pedals/WaveformSynth")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Pedals/JunoEmu")
 

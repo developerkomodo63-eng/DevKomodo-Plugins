@@ -1,0 +1,334 @@
+#include "PluginProcessor.h"
+
+namespace
+{
+constexpr float pi = juce::MathConstants<float>::pi;
+
+float parameter (juce::AudioProcessorValueTreeState& state, const char* id, float fallback = 0.0f)
+{
+    if (auto* value = state.getRawParameterValue (id))
+        return value->load();
+    return fallback;
+}
+
+float envCoeff (float seconds, double sr) noexcept
+{
+    if (seconds <= 0.0001f)
+        return 0.0f;
+    return std::exp (-1.0f / (seconds * (float) sr));
+}
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
+    auto choice = [&] (const char* id, const char* name, juce::StringArray items, int def)
+    {
+        p.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { id, 1 }, name, items, def));
+    };
+    auto f = [&] (const char* id, const char* name, float lo, float hi, float def)
+    {
+        p.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, lo, hi, def));
+    };
+
+    choice ("WAVE", "DCO Wave", { "Saw", "Pulse", "Saw + Pulse" }, 2);
+    f ("PULSE", "Pulse Width", 0.05f, 0.95f, 0.50f);
+    f ("PWM_RATE", "PWM Rate", 0.05f, 12.0f, 0.55f);
+    f ("PWM_DEPTH", "PWM Depth", 0.0f, 1.0f, 0.0f);
+    f ("SUB", "Sub Osc", 0.0f, 1.0f, 0.35f);
+    choice ("SUB_OCT", "Sub Octave", { "-1 Oct", "-2 Oct" }, 0);
+    f ("NOISE", "Noise", 0.0f, 1.0f, 0.04f);
+    f ("HPF", "HPF", 0.0f, 1.0f, 0.18f);
+    f ("CUTOFF", "VCF Cutoff", 60.0f, 18000.0f, 4200.0f);
+    f ("RESONANCE", "VCF Resonance", 0.0f, 1.0f, 0.18f);
+    f ("ENV_AMOUNT", "VCF Env", -1.0f, 1.0f, 0.45f);
+    f ("ATTACK", "Attack", 0.001f, 2.0f, 0.008f);
+    f ("DECAY", "Decay", 0.005f, 3.0f, 0.22f);
+    f ("SUSTAIN", "Sustain", 0.0f, 1.0f, 0.72f);
+    f ("RELEASE", "Release", 0.01f, 4.0f, 0.35f);
+    f ("FILTER_ATTACK", "Filter Attack", 0.001f, 2.0f, 0.01f);
+    f ("FILTER_DECAY", "Filter Decay", 0.005f, 3.0f, 0.25f);
+    f ("LFO_RATE", "LFO Rate", 0.05f, 12.0f, 4.8f);
+    f ("LFO_DEPTH", "Vibrato", 0.0f, 1.0f, 0.0f);
+    choice ("CHORUS", "Chorus", { "Off", "I", "II" }, 1);
+    f ("CHORUS_MIX", "Chorus Mix", 0.0f, 1.0f, 0.38f);
+    f ("LEVEL", "Level", -24.0f, 6.0f, -3.0f);
+    return { p.begin(), p.end() };
+}
+
+JunoEmuAudioProcessor::JunoEmuAudioProcessor()
+#ifndef JucePlugin_PreferredChannelConfigurations
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+#endif
+{
+    synth.setNoteStealingEnabled (true);
+    for (int i = 0; i < 6; ++i)
+        synth.addVoice (new JunoEmuVoice (*this));
+    synth.addSound (new JunoEmuSound());
+}
+
+JunoEmuAudioProcessor::~JunoEmuAudioProcessor() = default;
+
+void JunoEmuAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    currentSampleRate = sampleRate;
+    lastBlockSize = samplesPerBlock;
+    synth.setCurrentPlaybackSampleRate (sampleRate);
+    chorus.setSampleRate (sampleRate);
+    chorus.setCentreDelay (8.0f);
+    chorus.setDepth (0.28f);
+    chorus.setFeedback (0.0f);
+    chorus.setMix (parameter (apvts, "CHORUS_MIX", 0.38f));
+    chorus.setRate (0.85f);
+    chorus.reset();
+}
+
+void JunoEmuAudioProcessor::releaseResources()
+{
+    synth.allNotesOff (0, false);
+}
+
+bool JunoEmuAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::mono()
+        || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+}
+
+void JunoEmuAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+#if defined (DEVKOMODO_DEMO_BUILD)
+    if (devkomodo::demoExpired (getSampleRate(), buffer.getNumSamples()))
+    {
+        buffer.clear();
+        return;
+    }
+#endif
+
+    buffer.clear();
+    synth.renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
+
+    const int chorusMode = (int) parameter (apvts, "CHORUS", 1.0f);
+    if (chorusMode != 0)
+    {
+        chorus.setRate (chorusMode == 1 ? 0.82f : 1.25f);
+        chorus.setDepth (chorusMode == 1 ? 0.24f : 0.34f);
+        chorus.setCentreDelay (chorusMode == 1 ? 7.5f : 10.0f);
+        chorus.setMix (parameter (apvts, "CHORUS_MIX", 0.38f));
+        juce::dsp::AudioBlock<float> block (buffer);
+        juce::dsp::ProcessContextReplacing<float> context (block);
+        chorus.process (context);
+    }
+
+    const float gain = juce::Decibels::decibelsToGain (parameter (apvts, "LEVEL", -3.0f));
+    buffer.applyGain (gain);
+}
+
+void JunoEmuAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto xml = apvts.copyState().createXml();
+    copyXmlToBinary (*xml, destData);
+}
+
+void JunoEmuAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (data == nullptr || sizeInBytes <= 0)
+        return;
+    std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
+    if (xml != nullptr)
+    {
+        auto state = juce::ValueTree::fromXml (*xml);
+        if (state.isValid() && state.hasType (apvts.state.getType()))
+            apvts.replaceState (state);
+    }
+}
+
+juce::AudioProcessorEditor* JunoEmuAudioProcessor::createEditor()
+{
+    return new DevKomodoUniversalEditor (*this, apvts, "Juno Emu", juce::Colour::fromRGB (242, 148, 54));
+}
+
+bool JunoEmuVoice::canPlaySound (juce::SynthesiserSound* sound)
+{
+    return dynamic_cast<JunoEmuSound*> (sound) != nullptr;
+}
+
+void JunoEmuVoice::startNote (int midiNoteNumber, float noteVelocity, juce::SynthesiserSound*, int)
+{
+    note = midiNoteNumber;
+    velocity = noteVelocity;
+    targetFreq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
+    currentFreq = targetFreq;
+    phase = 0.0f;
+    subPhase = 0.0f;
+    lfoPhase = random.nextFloat();
+    env = 0.0f;
+    filterEnv = 0.0f;
+    std::fill (std::begin (filterL), std::end (filterL), 0.0f);
+    std::fill (std::begin (filterR), std::end (filterR), 0.0f);
+    hpStateL = 0.0f;
+    hpStateR = 0.0f;
+    releasing = false;
+    sampleRate = processor.getSampleRate() > 0.0 ? processor.getSampleRate() : 44100.0;
+    updateEnvelopeCoefficients();
+}
+
+void JunoEmuVoice::stopNote (float, bool allowTailOff)
+{
+    if (allowTailOff)
+        releasing = true;
+    else
+    {
+        clearCurrentNote();
+        env = 0.0f;
+        filterEnv = 0.0f;
+    }
+}
+
+float JunoEmuVoice::polyBlep (float t, float dt) const noexcept
+{
+    if (t < dt)
+    {
+        t /= dt;
+        return t + t - t * t - 1.0f;
+    }
+    if (t > 1.0f - dt)
+    {
+        t = (t - 1.0f) / dt;
+        return t * t + t + t + 1.0f;
+    }
+    return 0.0f;
+}
+
+float JunoEmuVoice::oscSaw (float p, float dt) const noexcept
+{
+    return (2.0f * p - 1.0f) - polyBlep (p, dt);
+}
+
+float JunoEmuVoice::oscPulse (float p, float dt, float width) const noexcept
+{
+    const float second = std::fmod (p + (1.0f - width), 1.0f);
+    return (p < width ? 1.0f : -1.0f) + polyBlep (p, dt) - polyBlep (second, dt);
+}
+
+float JunoEmuVoice::nextNoise() noexcept
+{
+    return random.nextFloat() * 2.0f - 1.0f;
+}
+
+void JunoEmuVoice::updateEnvelopeCoefficients()
+{
+    auto& s = processor.apvts;
+    envAttack = envCoeff (parameter (s, "ATTACK", 0.008f), sampleRate);
+    envDecay = envCoeff (parameter (s, "DECAY", 0.22f), sampleRate);
+    envRelease = envCoeff (parameter (s, "RELEASE", 0.35f), sampleRate);
+    filterAttack = envCoeff (parameter (s, "FILTER_ATTACK", 0.01f), sampleRate);
+    filterDecay = envCoeff (parameter (s, "FILTER_DECAY", 0.25f), sampleRate);
+    filterRelease = envCoeff (parameter (s, "RELEASE", 0.35f), sampleRate);
+}
+
+void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
+{
+    auto& s = processor.apvts;
+    const int wave = (int) parameter (s, "WAVE", 2.0f);
+    const float pulseBase = parameter (s, "PULSE", 0.50f);
+    const float pwmRate = parameter (s, "PWM_RATE", 0.55f);
+    const float pwmDepth = parameter (s, "PWM_DEPTH", 0.0f);
+    const float subLevel = parameter (s, "SUB", 0.35f);
+    const int subOct = (int) parameter (s, "SUB_OCT", 0.0f);
+    const float noiseLevel = parameter (s, "NOISE", 0.04f);
+    const float hpf = parameter (s, "HPF", 0.18f);
+    const float cutoff = parameter (s, "CUTOFF", 4200.0f);
+    const float resonance = parameter (s, "RESONANCE", 0.18f);
+    const float envAmount = parameter (s, "ENV_AMOUNT", 0.45f);
+    const float sustain = parameter (s, "SUSTAIN", 0.72f);
+    const float lfoRate = parameter (s, "LFO_RATE", 4.8f);
+    const float lfoDepth = parameter (s, "LFO_DEPTH", 0.0f);
+    const float glide = 0.015f;
+    const float glideCoeff = std::exp (-1.0f / (glide * (float) sampleRate));
+    const float hpFreq = juce::jmap (hpf, 20.0f, 700.0f);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        if (! releasing)
+        {
+            if (env < 0.999f)
+                env = 1.0f - (1.0f - env) * envAttack;
+            else
+                env = sustain + (env - sustain) * envDecay;
+
+            if (filterEnv < 0.999f)
+                filterEnv = 1.0f - (1.0f - filterEnv) * filterAttack;
+            else
+                filterEnv = sustain + (filterEnv - sustain) * filterDecay;
+        }
+        else
+        {
+            env *= envRelease;
+            filterEnv *= filterRelease;
+            if (env < 0.00005f)
+            {
+                clearCurrentNote();
+                return;
+            }
+        }
+
+        currentFreq = targetFreq + (currentFreq - targetFreq) * glideCoeff;
+        const float vibrato = std::sin (2.0f * pi * lfoPhase) * lfoDepth * 0.035f;
+        const float freq = currentFreq * (1.0f + vibrato);
+        const float dt = juce::jlimit (0.000001f, 0.49f, freq / (float) sampleRate);
+        const float subFreq = freq * (subOct == 0 ? 0.5f : 0.25f);
+        const float subDt = juce::jlimit (0.000001f, 0.49f, subFreq / (float) sampleRate);
+
+        const float pwm = juce::jlimit (0.05f, 0.95f,
+            pulseBase + std::sin (2.0f * pi * lfoPhase) * pwmDepth * 0.45f);
+        const float saw = oscSaw (phase, dt);
+        const float pulse = oscPulse (phase, dt, pwm);
+        float dco = wave == 0 ? saw : (wave == 1 ? pulse : 0.5f * (saw + pulse));
+        const float sub = (subPhase < 0.5f ? 1.0f : -1.0f) * subLevel;
+        const float noise = nextNoise() * noiseLevel;
+        float x = (dco * 0.62f + sub * 0.30f + noise * 0.16f) * velocity;
+
+        // Juno-style 24 dB/oct low-pass approximation: four cascaded one-pole
+        // stages with resonance fed back into the input. The slight saturation
+        // before the ladder gives the DCO/VCF path some analogue density.
+        const float modCutoff = cutoff * std::pow (2.0f, envAmount * filterEnv * 2.0f);
+        const float fc = juce::jlimit (30.0f, (float) sampleRate * 0.45f, modCutoff);
+        const float g = 1.0f - std::exp (-2.0f * pi * fc / (float) sampleRate);
+        const float feedback = resonance * 3.55f;
+        x = std::tanh (x * (1.0f + resonance * 1.5f));
+        const float inputL = x - filterL[3] * feedback;
+        const float inputR = x - filterR[3] * feedback;
+        for (int stage = 0; stage < 4; ++stage)
+        {
+            filterL[stage] += g * (stage == 0 ? inputL - filterL[stage] : filterL[stage - 1] - filterL[stage]);
+            filterR[stage] += g * (stage == 0 ? inputR - filterR[stage] : filterR[stage - 1] - filterR[stage]);
+            filterL[stage] = std::tanh (filterL[stage] * (1.0f + resonance * 0.08f));
+            filterR[stage] = std::tanh (filterR[stage] * (1.0f + resonance * 0.08f));
+        }
+
+        // Simple high-pass stage before the VCF output, mirroring the Juno's
+        // dedicated HPF rather than carving the bass out of the VCF itself.
+        const float hpCoeff = std::exp (-2.0f * pi * hpFreq / (float) sampleRate);
+        hpStateL = hpCoeff * hpStateL + (1.0f - hpCoeff) * filterL[3];
+        const float outL = filterL[3] - hpStateL * hpf * 0.85f;
+        hpStateR = hpCoeff * hpStateR + (1.0f - hpCoeff) * filterR[3];
+        const float outR = filterR[3] - hpStateR * hpf * 0.85f;
+
+        outputBuffer.addSample (0, startSample + i, outL * env * 0.72f);
+        if (outputBuffer.getNumChannels() > 1)
+            outputBuffer.addSample (1, startSample + i, outR * env * 0.72f);
+
+        phase += dt;
+        subPhase += subDt;
+        lfoPhase += lfoRate / (float) sampleRate;
+        phase -= std::floor (phase);
+        subPhase -= std::floor (subPhase);
+        lfoPhase -= std::floor (lfoPhase);
+    }
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new JunoEmuAudioProcessor();
+}

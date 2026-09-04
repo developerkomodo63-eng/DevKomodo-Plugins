@@ -1,4 +1,4 @@
-name: Build Windows VST3
+name: Build Juno Emu - Windows VST3
 
 on:
   push:
@@ -34,17 +34,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          find build -type d -iname "*.vst3" -path "*Release*" -print
+          find build -type d -iname "Juno Emu.vst3" -path "*Release*" -print
 
       - name: Collect VST3 artifacts
         shell: bash
         run: |
           mkdir -p artifacts
-          find build -type d -iname "*.vst3" -path "*Release*" -exec cp -r {} artifacts/ \;
+          find build -type d -iname "Juno Emu.vst3" -path "*Release*" -exec cp -r {} artifacts/ \;
 
       - name: Upload VST3 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DevKomodo-VST3-Windows
+          name: JunoEmu-Windows-VST3
           path: artifacts/
           if-no-files-found: error

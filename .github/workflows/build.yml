@@ -1,12 +1,15 @@
-name: Build Waveform Synth - Windows VST3
+name: Build Juno Emu - Windows VST3
 
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Waveform Synth / Windows x64 VST3
+    name: Juno Emu / Windows x64 VST3
     runs-on: windows-2022
     timeout-minutes: 60
 
@@ -18,53 +21,41 @@ jobs:
         shell: pwsh
         run: >-
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-          -DDEVKOMODO_ACTIVE_PLUGIN=WaveformSynth
+          -DDEVKOMODO_ACTIVE_PLUGIN=JunoEmu
           -DCMAKE_CXX_STANDARD=17
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
           -DCMAKE_CONFIGURATION_TYPES=Release
 
-      - name: Build Waveform Synth (Release)
+      - name: Build Juno Emu (Release)
         shell: pwsh
-        run: cmake --build build --config Release --target WaveformSynth_VST3 --parallel
+        run: cmake --build build --config Release --target JunoEmu_VST3 --parallel
 
-      - name: Validate Waveform Synth VST3
+      - name: Validate Juno Emu VST3
         shell: pwsh
         run: |
-          # JUCE/CMake places the final VST3 bundle in:
-          #   build/Pedals/WaveformSynth/WaveformSynth_artefacts/Release/VST3/
-          # The format-specific target has already been built above.
-          # Prefer this exact Release/VST3 location so intermediate/generated
-          # copies elsewhere in the build tree cannot be mistaken for the final artifact.
-          $artefactRoot = Join-Path $PWD "build/Pedals/WaveformSynth/WaveformSynth_artefacts/Release/VST3"
+          $artefactRoot = Join-Path $PWD "build/Pedals/JunoEmu/JunoEmu_artefacts/Release/VST3"
           $vst3 = @()
 
           if (Test-Path -LiteralPath $artefactRoot -PathType Container) {
             $vst3 = @(Get-ChildItem -LiteralPath $artefactRoot -Directory -Force -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -eq "Waveform Synth.vst3" })
+              Where-Object { $_.Name -eq "JunoEmu.vst3" })
           }
 
-          # Fallback for JUCE/CMake layout differences: still restrict the
-          # search to Release/VST3 directories belonging to WaveformSynth.
           if ($vst3.Count -eq 0) {
             $vst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
               Where-Object {
-                $_.Name -eq "Waveform Synth.vst3" -and
-                $_.FullName -match "[\\/]WaveformSynth_artefacts[\\/]Release[\\/]VST3[\\/]"
+                $_.Name -eq "JunoEmu.vst3" -and
+                $_.FullName -match "[\\/]JunoEmu_artefacts[\\/]Release[\\/]VST3[\\/]"
               })
           }
 
           if ($vst3.Count -ne 1) {
-            Write-Error "Expected exactly one Waveform Synth VST3 bundle in Release/VST3, found $($vst3.Count)."
+            Write-Error "Expected exactly one Juno Emu VST3 bundle in Release/VST3, found $($vst3.Count)."
             Write-Host "Expected artifact directory: $artefactRoot"
             Write-Host "All VST3 bundles found under build (diagnostic only):"
             Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
               Where-Object { $_.Name -like "*.vst3" } |
-              ForEach-Object { Write-Host "  $($_.FullName)" }
-            Write-Host "WaveformSynth artefact directories:"
-            Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match "WaveformSynth_artefacts|Release[\\/]VST3" } |
-              Select-Object -First 150 FullName |
               ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
@@ -74,15 +65,15 @@ jobs:
             Select-Object -First 1
 
           if ($null -eq $binary) {
-            Write-Error "Waveform Synth VST3 bundle does not contain a Windows x64 binary."
+            Write-Error "Juno Emu VST3 bundle does not contain a Windows x64 binary."
             Get-ChildItem -LiteralPath $vst3[0].FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
               Select-Object -First 100 FullName |
               ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
 
-          "WAVEFORM_SYNTH_VST3=$($vst3[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Waveform Synth VST3: $($vst3[0].FullName)"
+          "JUNO_EMU_VST3=$($vst3[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Juno Emu VST3: $($vst3[0].FullName)"
           Write-Host "Binary: $($binary.FullName)"
 
       - name: Run pluginval
@@ -97,11 +88,11 @@ jobs:
             Write-Error "pluginval.exe was not found in the downloaded archive."
             exit 1
           }
-          if ([string]::IsNullOrWhiteSpace($env:WAVEFORM_SYNTH_VST3)) {
-            Write-Error "WAVEFORM_SYNTH_VST3 is not set."
+          if ([string]::IsNullOrWhiteSpace($env:JUNO_EMU_VST3)) {
+            Write-Error "JUNO_EMU_VST3 is not set."
             exit 1
           }
-          & $pluginval.FullName --strictness-level 5 --validate $env:WAVEFORM_SYNTH_VST3
+          & $pluginval.FullName --strictness-level 5 --validate $env:JUNO_EMU_VST3
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -110,15 +101,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "artifacts" | Out-Null
-          if ([string]::IsNullOrWhiteSpace($env:WAVEFORM_SYNTH_VST3)) {
-            Write-Error "WAVEFORM_SYNTH_VST3 is not set."
+          if ([string]::IsNullOrWhiteSpace($env:JUNO_EMU_VST3)) {
+            Write-Error "JUNO_EMU_VST3 is not set."
             exit 1
           }
-          Copy-Item -Path $env:WAVEFORM_SYNTH_VST3 -Destination "artifacts/Waveform Synth.vst3" -Recurse -Force
+          Copy-Item -Path $env:JUNO_EMU_VST3 -Destination "artifacts/Juno Emu.vst3" -Recurse -Force
 
-      - name: Upload Waveform Synth VST3
+      - name: Upload Juno Emu VST3
         uses: actions/upload-artifact@v4
         with:
-          name: WaveformSynth-Windows-VST3
+          name: JunoEmu-Windows-VST3
           path: artifacts/
           if-no-files-found: error

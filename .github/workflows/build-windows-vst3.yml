@@ -28,19 +28,19 @@ jobs:
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
 
       - name: Build (Release)
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --target JunoEmu --parallel
 
       - name: Locate built VST3 plugins
         shell: bash
         run: |
           mkdir -p artifacts
-          find build -type d -iname "Juno Emu.vst3" -path "*Release*" -print
+          find build -type d -iname "*.vst3" -path "*Release*" -print
 
       - name: Collect VST3 artifacts
         shell: bash
         run: |
           mkdir -p artifacts
-          find build -type d -iname "Juno Emu.vst3" -path "*Release*" -exec cp -r {} artifacts/ \;
+          find build -type d -iname "*.vst3" -path "*Release*" -exec cp -r {} artifacts/ \;
 
       - name: Upload VST3 artifacts
         uses: actions/upload-artifact@v4

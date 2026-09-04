@@ -74,7 +74,11 @@ void JunoEmuAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     currentSampleRate = sampleRate;
     lastBlockSize = samplesPerBlock;
     synth.setCurrentPlaybackSampleRate (sampleRate);
-    chorus.setSampleRate (sampleRate);
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
+    spec.numChannels = static_cast<juce::uint32> (getMainBusNumOutputChannels());
+    chorus.prepare (spec);
     chorus.setCentreDelay (8.0f);
     chorus.setDepth (0.28f);
     chorus.setFeedback (0.0f);

@@ -31,47 +31,53 @@ jobs:
       - name: Validate Waveform Synth VST3
         shell: pwsh
         run: |
-          # JUCE generates the VST3 through the format-specific target
-          # WaveformSynth_VST3 and normally places it below *_artefacts/Release/VST3.
-          # Search both directories and files so validation remains robust to small
-          # JUCE/CMake layout differences.
-          $allVst3 = @(Get-ChildItem -Path "build" -Recurse -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like "*.vst3" -and ($_.PSIsContainer -or $_.Extension -eq ".vst3") })
+          # JUCE/CMake places the final VST3 bundle in:
+          #   build/Pedals/WaveformSynth/WaveformSynth_artefacts/Release/VST3/
+          # The format-specific target has already been built above.
+          # Prefer this exact Release/VST3 location so intermediate/generated
+          # copies elsewhere in the build tree cannot be mistaken for the final artifact.
+          $artefactRoot = Join-Path $PWD "build/Pedals/WaveformSynth/WaveformSynth_artefacts/Release/VST3"
+          $vst3 = @()
 
-          $vst3 = @($allVst3 | Where-Object {
-            $_.FullName -match "[\\/]WaveformSynth_artefacts[\\/]" -or
-            $_.Name -match "^Waveform( Synth)?\.vst3$" -or
-            $_.Name -match "WaveformSynth.*\.vst3"
-          })
+          if (Test-Path -LiteralPath $artefactRoot -PathType Container) {
+            $vst3 = @(Get-ChildItem -LiteralPath $artefactRoot -Directory -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -eq "Waveform Synth.vst3" })
+          }
+
+          # Fallback for JUCE/CMake layout differences: still restrict the
+          # search to Release/VST3 directories belonging to WaveformSynth.
+          if ($vst3.Count -eq 0) {
+            $vst3 = @(Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.Name -eq "Waveform Synth.vst3" -and
+                $_.FullName -match "[\\/]WaveformSynth_artefacts[\\/]Release[\\/]VST3[\\/]"
+              })
+          }
 
           if ($vst3.Count -ne 1) {
-            Write-Error "Expected exactly one Waveform Synth VST3 bundle, found $($vst3.Count)."
-            Write-Host "All .vst3 entries found under build:"
-            if ($allVst3.Count -eq 0) {
-              Write-Host "  <none>"
-            } else {
-              $allVst3 | ForEach-Object { Write-Host "  $($_.FullName)" }
-            }
-            Write-Host "Relevant JUCE/CMake build directories:"
-            Get-ChildItem -Path "build" -Recurse -Directory -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match "artefacts|VST3|WaveformSynth" } |
-              Select-Object -First 150 FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
+            Write-Error "Expected exactly one Waveform Synth VST3 bundle in Release/VST3, found $($vst3.Count)."
+            Write-Host "Expected artifact directory: $artefactRoot"
+            Write-Host "All VST3 bundles found under build (diagnostic only):"
+            Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -like "*.vst3" } |
+              ForEach-Object { Write-Host "  $($_.FullName)" }
+            Write-Host "WaveformSynth artefact directories:"
+            Get-ChildItem -Path "build" -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match "WaveformSynth_artefacts|Release[\\/]VST3" } |
+              Select-Object -First 150 FullName |
+              ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
 
-          if (-not $vst3[0].PSIsContainer) {
-            Write-Error "Waveform Synth VST3 output is not a directory bundle: $($vst3[0].FullName)"
-            exit 1
-          }
-
-          $binary = Get-ChildItem -Path $vst3[0].FullName -Recurse -File -ErrorAction SilentlyContinue |
+          $binary = Get-ChildItem -LiteralPath $vst3[0].FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match "[\\/]Contents[\\/]x86_64-win[\\/]" } |
             Select-Object -First 1
 
           if ($null -eq $binary) {
             Write-Error "Waveform Synth VST3 bundle does not contain a Windows x64 binary."
-            Get-ChildItem -Path $vst3[0].FullName -Recurse -File -ErrorAction SilentlyContinue |
-              Select-Object -First 100 FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
+            Get-ChildItem -LiteralPath $vst3[0].FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
+              Select-Object -First 100 FullName |
+              ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
 

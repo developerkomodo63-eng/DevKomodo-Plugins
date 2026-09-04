@@ -110,7 +110,8 @@ public:
     {
         setOpaque (true);
         setResizable (true, true);
-        setResizeLimits (560, 330, 1180, 760);
+        const bool junoEditor = name.toUpperCase().contains ("JUNO");
+        setResizeLimits (junoEditor ? 720 : 560, junoEditor ? 500 : 330, 1180, 820);
 
         title.setText (name.isNotEmpty() ? name.toUpperCase() : "DEVKOMODO", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
@@ -126,7 +127,10 @@ public:
 #if defined (DEVKOMODO_DEMO_BUILD)
         brand.setText ("DEVKOMODO  •  DEMO  •  15 MIN", juce::dontSendNotification);
 #else
-        brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
+        if (name.toUpperCase().contains ("JUNO"))
+            brand.setText ("DEVKOMODO  •  DCO CLASSIC  •  MODERN EDITION", juce::dontSendNotification);
+        else
+            brand.setText (premiumProduct ? "DEVKOMODO  •  PREMIUM" : "DEVKOMODO", juce::dontSendNotification);
 #endif
         brand.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold)));
         // Blend the accent with white (rather than using the raw accent at
@@ -318,7 +322,10 @@ public:
         // resized() while those vectors were still empty, so nothing had
         // real bounds until the host forced a second resize -- which is why
         // the UI looked blank/empty until you dragged to resize the window.
-        setSize (760, 470);
+        if (name.toUpperCase().contains ("JUNO"))
+            setSize (900, 600);
+        else
+            setSize (760, 470);
     }
 
     ~DevKomodoUniversalEditor() override
@@ -362,6 +369,8 @@ public:
                  || category.contains ("SATUR") || category.contains ("PREAMP")
                  || category.contains ("CLIPPER"))
             familyColour = juce::Colour::fromRGB (220, 83, 48);
+        else if (category.contains ("JUNO"))
+            familyColour = juce::Colour::fromRGB (242, 148, 54);
         else if (category.contains ("FILTER") || category.contains ("OCTAVER"))
             familyColour = juce::Colour::fromRGB (76, 190, 177);
         else if (category.contains ("GLITCH") || category.contains ("GRANULATOR")
@@ -615,6 +624,10 @@ private:
         if (preset == "PLATE") return "PLATE - bright, smooth sustain";
         if (preset == "HALL") return "HALL - spacious decay for open parts";
         if (preset == "ARENA") return "ARENA - long, dramatic space";
+        if (preset == "JUNO CLEAN") return "JUNO CLEAN - focused DCO/VCF with classic chorus";
+        if (preset == "BASS") return "BASS - tight low end, sub weight and restrained chorus";
+        if (preset == "CHORD") return "CHORD - rich poly pads with controlled modulation";
+        if (preset == "MODERN") return "MODERN - unison, drive and spatial FX beyond the original";
         return presetName + " - factory starting point";
     }
     juce::AudioProcessorParameter* findParameterById (const juce::String& id) const
@@ -699,6 +712,40 @@ private:
     {
         juce::StringArray names { "INIT", "CLEAN", "PUNCH", "WIDE", "EXTREME" };
         const auto category = upper (name);
+        if (category.contains ("JUNO"))
+        {
+            names = juce::StringArray { "INIT", "JUNO CLEAN", "BASS", "CHORD", "MODERN" };
+            const auto set = [this] (const char* id, float value, Preset& p)
+            {
+                if (auto* parameter = findParameterById (id))
+                {
+                    if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+                    {
+                        const float lo = ranged->getNormalisableRange().start;
+                        const float hi = ranged->getNormalisableRange().end;
+                        p.values.emplace_back (id, juce::jlimit (0.0f, 1.0f, (value - lo) / (hi - lo)));
+                    }
+                }
+            };
+            const float presets[4][13] = {
+                { 2, 0.50f, 0.55f, 0.00f, 0.10f, 0.55f, 0.10f, 1, 0.38f, 280, 0.18f, 0.00f, 0.00f },
+                { 0, 0.50f, 0.35f, 0.00f, 0.08f, 0.70f, 0.35f, 1, 0.30f, 180, 0.10f, 0.00f, 0.00f },
+                { 2, 0.50f, 0.75f, 0.00f, 0.10f, 0.65f, 0.20f, 2, 0.46f, 420, 0.16f, 0.10f, 0.10f },
+                { 2, 0.48f, 0.80f, 0.65f, 0.18f, 0.55f, 0.35f, 2, 0.42f, 320, 0.38f, 0.18f, 0.12f }
+            };
+            const char* ids[13] = { "WAVE","PULSE","PWM_RATE","UNISON","DETUNE","DRIFT","FILTER_DRIVE","CHORUS","CHORUS_MIX","DELAY_TIME","DELAY_FEEDBACK","DELAY_MIX","REVERB_MIX" };
+            for (int presetIndex = 0; presetIndex < 4; ++presetIndex)
+            {
+                Preset p;
+                p.name = names[presetIndex + 1];
+                for (int i = 0; i < 13; ++i)
+                    set (ids[i], presets[presetIndex][i], p);
+                set ("WIDTH", presetIndex == 3 ? 0.90f : 0.72f, p);
+                set ("DRIVE", presetIndex == 3 ? 0.22f : 0.0f, p);
+                result.push_back (std::move (p));
+            }
+            return result;
+        }
         if (category.contains ("REVERB")) names = juce::StringArray { "INIT", "ROOM", "PLATE", "HALL", "ARENA" };
         else if (category.contains ("DELAY")) names = juce::StringArray { "INIT", "SLAP", "ECHO", "WIDE", "TAPE" };
         else if (category.contains ("CHORUS") || category.contains ("FLANGER") || category.contains ("PHASER") || category.contains ("VIBRATO")) names = juce::StringArray { "INIT", "CLASSIC", "MOTION", "WIDE", "JET" };

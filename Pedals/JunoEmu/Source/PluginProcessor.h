@@ -41,6 +41,9 @@ public:
 private:
     juce::Synthesiser synth;
     juce::dsp::Chorus<float> chorus;
+    juce::dsp::Reverb reverb;
+    juce::AudioBuffer<float> delayBuffer;
+    int delayWritePosition = 0;
     double currentSampleRate = 44100.0;
     int lastBlockSize = 512;
 
@@ -71,8 +74,12 @@ private:
     int note = 0;
     float velocity = 0.0f;
     float phase = 0.0f;
+    float unisonPhaseA = 0.0f;
+    float unisonPhaseB = 0.0f;
     float subPhase = 0.0f;
     float lfoPhase = 0.0f;
+    float driftPhase = 0.0f;
+    float driftValue = 0.0f;
     float env = 0.0f;
     float filterEnv = 0.0f;
     float currentFreq = 440.0f;

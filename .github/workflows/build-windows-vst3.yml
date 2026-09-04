@@ -28,7 +28,7 @@ jobs:
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
 
       - name: Build (Release)
-        run: cmake --build build --config Release --target JunoEmu --parallel
+        run: cmake --build build --config Release --target JunoEmu_VST3 --parallel
 
       - name: Locate built VST3 plugins
         shell: bash

@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "JunoUI.h"
 
 namespace
 {
@@ -250,7 +251,7 @@ void JunoEmuAudioProcessor::setStateInformation (const void* data, int sizeInByt
 
 juce::AudioProcessorEditor* JunoEmuAudioProcessor::createEditor()
 {
-    return new DevKomodoUniversalEditor (*this, apvts, "Juno Emu", juce::Colour::fromRGB (242, 148, 54));
+    return new junoui::JunoEmuEditor (*this, apvts);
 }
 
 bool JunoEmuVoice::canPlaySound (juce::SynthesiserSound* sound)

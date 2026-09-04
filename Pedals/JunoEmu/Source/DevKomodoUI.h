@@ -111,7 +111,7 @@ public:
         setOpaque (true);
         setResizable (true, true);
         const bool junoEditor = name.toUpperCase().contains ("JUNO");
-        setResizeLimits (junoEditor ? 720 : 560, junoEditor ? 500 : 330, 1180, 820);
+        setResizeLimits (junoEditor ? 640 : 560, junoEditor ? 400 : 330, 1180, 820);
 
         title.setText (name.isNotEmpty() ? name.toUpperCase() : "DEVKOMODO", juce::dontSendNotification);
         title.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
@@ -323,7 +323,7 @@ public:
         // real bounds until the host forced a second resize -- which is why
         // the UI looked blank/empty until you dragged to resize the window.
         if (name.toUpperCase().contains ("JUNO"))
-            setSize (900, 600);
+            setSize (760, 460);
         else
             setSize (760, 470);
     }
@@ -453,8 +453,9 @@ public:
 
     void resized() override
     {
+        const bool junoEditor = name.toUpperCase().contains ("JUNO");
         auto bounds = getLocalBounds().reduced (18, 14);
-        auto header = bounds.removeFromTop (62);
+        auto header = bounds.removeFromTop (junoEditor ? 50 : 62);
 
         // Responsive header: the old left/right carving could overlap at the
         // minimum editor width (title + brand + preset + instrument exceeded
@@ -469,9 +470,9 @@ public:
         title.setBounds (titleArea.removeFromTop (34));
         brand.setBounds (titleArea);
 
-        bounds.removeFromTop (12);
-        auto footer = bounds.removeFromBottom (30);
-        bounds.removeFromBottom (8);
+        bounds.removeFromTop (junoEditor ? 8 : 12);
+        auto footer = bounds.removeFromBottom (junoEditor ? 24 : 30);
+        bounds.removeFromBottom (junoEditor ? 6 : 8);
 
         auto presetInfo = footer.removeFromLeft (juce::jmin (300, footer.getWidth() / 2));
         presetDescription.setBounds (presetInfo.reduced (3, 2));
@@ -496,11 +497,12 @@ public:
         const int count = (int) controls.size();
         if (count > 0)
         {
-            const int columns = count <= 3 ? count : (count <= 6 ? 3 : 4);
+            const int columns = junoEditor ? 6 : (count <= 3 ? count : (count <= 6 ? 3 : 4));
             const int rows = (count + columns - 1) / columns;
-            const int gap = 8;
+            const int gap = junoEditor ? 6 : 8;
             const int cellW = juce::jmax (92, (bounds.getWidth() - gap * (columns - 1)) / columns);
-            const int cellH = juce::jmax (82, (bounds.getHeight() - gap * (rows - 1)) / rows);
+            const int cellH = juce::jmax (junoEditor ? 42 : 82,
+                                          (bounds.getHeight() - gap * (rows - 1)) / rows);
 
             controlCellBounds.reserve ((size_t) count);
             for (int i = 0; i < count; ++i)
@@ -511,9 +513,9 @@ public:
                                                    bounds.getY() + row * (cellH + gap),
                                                    cellW, cellH);
                 controlCellBounds.push_back (cell);
-                auto labelArea = cell.removeFromTop (20);
+                auto labelArea = cell.removeFromTop (junoEditor ? 17 : 20);
                 labels[(size_t) i]->setBounds (labelArea.reduced (3, 0));
-                controls[(size_t) i]->setBounds (cell.reduced (6, 2));
+                controls[(size_t) i]->setBounds (cell.reduced (junoEditor ? 4 : 6, 2));
             }
         }
 

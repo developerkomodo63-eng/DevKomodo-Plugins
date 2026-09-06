@@ -65,6 +65,9 @@ public:
 private:
     float oscSaw (float phase, float phaseInc) const noexcept;
     float oscPulse (float phase, float phaseInc, float width) const noexcept;
+    float oscTriangle (float phase) const noexcept;
+    float oscSine (float phase) const noexcept;
+    float oscForWave (int waveType, float phase, float phaseInc, float width) const noexcept;
     float polyBlep (float t, float dt) const noexcept;
     float nextNoise() noexcept;
     void updateEnvelopeCoefficients();
@@ -74,6 +77,7 @@ private:
     int note = 0;
     float velocity = 0.0f;
     float phase = 0.0f;
+    float phase2 = 0.0f;
     float unisonPhaseA = 0.0f;
     float unisonPhaseB = 0.0f;
     float subPhase = 0.0f;

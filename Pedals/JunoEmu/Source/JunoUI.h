@@ -263,20 +263,20 @@ namespace junoui
             const float pulseWidth = raw ("PULSE", 0.5f);
             const float subLevel = raw ("SUB", 0.35f);
             const float noiseLevel = raw ("NOISE", 0.04f);
+            const float osc2Wave = raw ("OSC2_WAVE", 0.0f);
+            const float osc2Semi = raw ("OSC2_SEMI", 0.0f);
+            const float osc2Fine = raw ("OSC2_FINE", 0.0f);
+            const float osc2Level = raw ("OSC2_LEVEL", 0.0f);
+            const float osc2Ratio = std::pow (2.0f, (osc2Semi + osc2Fine * 0.01f) / 12.0f);
 
             juce::Path path;
+            juce::Path path2;
             constexpr int numPoints = 220;
             for (int i = 0; i <= numPoints; ++i)
             {
                 const float t = (float) i / (float) numPoints;
                 const float ph = std::fmod (t * 2.0f + phase, 1.0f);
-                float sample;
-                if (waveIndex < 0.5f)
-                    sample = 2.0f * ph - 1.0f;
-                else if (waveIndex < 1.5f)
-                    sample = ph < pulseWidth ? 1.0f : -1.0f;
-                else
-                    sample = 0.5f * (2.0f * ph - 1.0f) + 0.5f * (ph < pulseWidth ? 1.0f : -1.0f);
+                float sample = shapeSample (waveIndex, ph, pulseWidth, true);
 
                 sample += subLevel * 0.4f * std::sin (juce::MathConstants<float>::twoPi * ph * 0.5f);
                 sample += noiseLevel * (random.nextFloat() * 2.0f - 1.0f) * 0.2f;
@@ -285,6 +285,21 @@ namespace junoui
                 const float x = scope.getX() + t * scope.getWidth();
                 const float y = scope.getCentreY() - sample * scope.getHeight() * 0.42f;
                 if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+
+                if (osc2Level > 0.01f)
+                {
+                    const float ph2 = std::fmod (t * 2.0f * osc2Ratio + phase2, 1.0f);
+                    const float s2 = juce::jlimit (-1.05f, 1.05f,
+                        shapeSample (osc2Wave, ph2, pulseWidth, false) * osc2Level);
+                    const float y2 = scope.getCentreY() - s2 * scope.getHeight() * 0.42f;
+                    if (i == 0) path2.startNewSubPath (x, y2); else path2.lineTo (x, y2);
+                }
+            }
+            if (osc2Level > 0.01f)
+            {
+                g.setColour (accent.withAlpha (0.5f).interpolatedWith (juce::Colours::white, 0.25f));
+                g.strokePath (path2, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved,
+                                                             juce::PathStrokeType::rounded));
             }
             g.setColour (accent);
             g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
@@ -315,9 +330,34 @@ namespace junoui
             return fallback;
         }
 
+        // fiveWay selects the main DCO's 5-option numbering (2 = Saw+Pulse
+        // blend, 3 = Triangle, 4 = Sine) vs. OSC2's 4-option numbering
+        // (0 = Saw, 1 = Pulse, 2 = Triangle, 3 = Sine, no blend option).
+        static float shapeSample (float waveIndexF, float ph, float pulseWidth, bool fiveWay) noexcept
+        {
+            const float saw = 2.0f * ph - 1.0f;
+            const float pulse = ph < pulseWidth ? 1.0f : -1.0f;
+            const float triangle = 4.0f * std::abs (ph - 0.5f) - 1.0f;
+            const float sine = std::sin (juce::MathConstants<float>::twoPi * ph);
+
+            if (fiveWay)
+            {
+                if (waveIndexF < 0.5f) return saw;
+                if (waveIndexF < 1.5f) return pulse;
+                if (waveIndexF < 2.5f) return 0.5f * (saw + pulse);
+                if (waveIndexF < 3.5f) return triangle;
+                return sine;
+            }
+            if (waveIndexF < 0.5f) return saw;
+            if (waveIndexF < 1.5f) return pulse;
+            if (waveIndexF < 2.5f) return triangle;
+            return sine;
+        }
+
         void timerCallback() override
         {
             phase = std::fmod (phase + 0.012f, 1.0f);
+            phase2 = std::fmod (phase2 + 0.012f, 1.0f);
             const float lfoRate = raw ("LFO_RATE", 1.0f);
             lfoPhase = std::fmod (lfoPhase + lfoRate * 0.0095f, 1.0f);
             repaint();
@@ -325,7 +365,7 @@ namespace junoui
 
         juce::AudioProcessorValueTreeState& apvts;
         juce::Colour accent;
-        float phase = 0.0f, lfoPhase = 0.0f;
+        float phase = 0.0f, phase2 = 0.0f, lfoPhase = 0.0f;
         juce::Random random;
     };
 
@@ -535,8 +575,16 @@ namespace junoui
                 { "CUTOFF", 6000.0f }, { "RESONANCE", 0.45f }, { "ENV_AMOUNT", 0.6f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.15f }, { "SUSTAIN", 0.70f }, { "RELEASE", 0.25f },
                 { "UNISON", 0.6f }, { "DETUNE", 9.0f }, { "DRIFT", 0.10f },
+                { "OSC2_WAVE", 0 }, { "OSC2_SEMI", -12.0f }, { "OSC2_FINE", 4.0f }, { "OSC2_LEVEL", 0.35f },
                 { "LFO_RATE", 5.5f }, { "LFO_DEPTH", 0.05f },
                 { "CHORUS", 1 }, { "CHORUS_MIX", 0.30f }, { "DRIVE", 0.30f }, { "LEVEL", -3.0f } } },
+            { "GLASS BELLS", {
+                { "WAVE", 4 }, { "SUB", 0.0f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
+                { "CUTOFF", 9000.0f }, { "RESONANCE", 0.05f }, { "ENV_AMOUNT", 0.15f },
+                { "ATTACK", 0.005f }, { "DECAY", 1.4f }, { "SUSTAIN", 0.0f }, { "RELEASE", 1.8f },
+                { "OSC2_WAVE", 3 }, { "OSC2_SEMI", 7.0f }, { "OSC2_FINE", 3.0f }, { "OSC2_LEVEL", 0.45f },
+                { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.03f },
+                { "CHORUS", 2 }, { "CHORUS_MIX", 0.55f }, { "WIDTH", 1.0f }, { "LEVEL", -4.0f } } },
         };
     }
 
@@ -552,6 +600,8 @@ namespace junoui
               tooltipWindow (this, 600)
         {
             setOpaque (true);
+            setResizable (true, true);
+            setResizeLimits (1080, 660, 1600, 980);
 
             buildHeader();
             buildVisualizers();
@@ -564,9 +614,7 @@ namespace junoui
             presetBox.setSelectedId (1, juce::dontSendNotification);
             presetBox.onChange = [this] { applySelectedPreset(); };
 
-            setResizable (true, true);
-            setResizeLimits (1000, 620, 1500, 940);
-            setSize (1180, 680);
+            setSize (1280, 720);
             startTimerHz (15);
         }
 
@@ -599,7 +647,7 @@ namespace junoui
 
             g.setColour (juce::Colours::white.withAlpha (0.28f));
             g.setFont (juce::Font (juce::FontOptions (9.0f)));
-            g.drawText (juce::String (juce::CharPointer_UTF8 ("6 VOICES  \xe2\x80\xa2  DCO / HPF / VCF / VCA  \xe2\x80\xa2  CHORUS I & II")),
+            g.drawText ("6 VOICES  \u2022  DCO / HPF / VCF / VCA  \u2022  CHORUS I & II",
                         footerArea, juce::Justification::centred);
         }
 
@@ -611,7 +659,7 @@ namespace junoui
             bounds.removeFromTop (8);
             auto visualRow = bounds.removeFromTop (110);
             bounds.removeFromTop (8);
-            auto row1 = bounds.removeFromTop (150);
+            auto row1 = bounds.removeFromTop (168);
             bounds.removeFromTop (8);
             auto row2 = bounds.removeFromTop (120);
             bounds.removeFromTop (8);
@@ -633,9 +681,15 @@ namespace junoui
             visualRow.removeFromLeft (gap);
             filterView->setBounds (visualRow);
 
-            // Row 1: DCO (wider) | VCF
-            const int r1DcoW = (int) (row1.getWidth() * 0.52f);
-            dcoPanel->setBounds (row1.removeFromLeft (r1DcoW));
+            // Row 1: DCO | OSC 2 | VCF, widths proportional to column count
+            // (DCO 7 cols, OSC2 4 cols, VCF 7 cols)
+            const float r1Cols = 7.0f + 4.0f + 7.0f;
+            const int r1AvailW = row1.getWidth() - gap * 2;
+            const int dcoW = (int) (r1AvailW * (7.0f / r1Cols));
+            const int osc2W = (int) (r1AvailW * (4.0f / r1Cols));
+            dcoPanel->setBounds (row1.removeFromLeft (dcoW));
+            row1.removeFromLeft (gap);
+            osc2Panel->setBounds (row1.removeFromLeft (osc2W));
             row1.removeFromLeft (gap);
             vcfPanel->setBounds (row1);
 
@@ -678,7 +732,7 @@ namespace junoui
             title.setColour (juce::Label::textColourId, juce::Colours::white);
             addAndMakeVisible (title);
 
-            brand.setText (juce::String (juce::CharPointer_UTF8 ("DEVKOMODO  \xe2\x80\xa2  DCO CLASSIC  \xe2\x80\xa2  MODERN EDITION")), juce::dontSendNotification);
+            brand.setText ("DEVKOMODO  \u2022  DCO CLASSIC  \u2022  MODERN EDITION", juce::dontSendNotification);
             brand.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
             brand.setColour (juce::Label::textColourId, juce::Colours::white.interpolatedWith (accent, 0.55f));
             brand.setJustificationType (juce::Justification::centredRight);
@@ -704,13 +758,20 @@ namespace junoui
         {
             dcoPanel = std::make_unique<PanelSection> ("DCO", accent);
             addAndMakeVisible (*dcoPanel);
-            addSelector (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS" }, "WAVE");
+            addSelector (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE" }, "WAVE");
             addClassicSlider (*dcoPanel, "PULSE", "PW");
             addClassicSlider (*dcoPanel, "PWM_RATE", "PWM RT");
             addClassicSlider (*dcoPanel, "PWM_DEPTH", "PWM DEP");
             addClassicSlider (*dcoPanel, "SUB", "SUB");
             addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
+
+            osc2Panel = std::make_unique<PanelSection> ("OSC 2", accent);
+            addAndMakeVisible (*osc2Panel);
+            addSelector (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE" }, "WAVE");
+            addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
+            addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
+            addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
 
             vcfPanel = std::make_unique<PanelSection> ("HPF / VCF", accent);
             addAndMakeVisible (*vcfPanel);
@@ -855,7 +916,7 @@ namespace junoui
         std::unique_ptr<EnvelopeCurveView> envView;
         std::unique_ptr<FilterCurveView> filterView;
 
-        std::unique_ptr<PanelSection> dcoPanel, vcfPanel, lfoPanel, envPanel, fenvPanel, fxPanel, modernPanel;
+        std::unique_ptr<PanelSection> dcoPanel, osc2Panel, vcfPanel, lfoPanel, envPanel, fenvPanel, fxPanel, modernPanel;
 
         std::vector<SliderCtrl> classicSliders, modernSliders;
         std::vector<std::unique_ptr<juce::Label>> selectorLabels;

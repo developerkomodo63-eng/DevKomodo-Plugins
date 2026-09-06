@@ -599,7 +599,7 @@ namespace junoui
 
             g.setColour (juce::Colours::white.withAlpha (0.28f));
             g.setFont (juce::Font (juce::FontOptions (9.0f)));
-            g.drawText ("6 VOICES  \u2022  DCO / HPF / VCF / VCA  \u2022  CHORUS I & II",
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("6 VOICES  \xe2\x80\xa2  DCO / HPF / VCF / VCA  \xe2\x80\xa2  CHORUS I & II")),
                         footerArea, juce::Justification::centred);
         }
 
@@ -678,7 +678,7 @@ namespace junoui
             title.setColour (juce::Label::textColourId, juce::Colours::white);
             addAndMakeVisible (title);
 
-            brand.setText ("DEVKOMODO  \u2022  DCO CLASSIC  \u2022  MODERN EDITION", juce::dontSendNotification);
+            brand.setText (juce::String (juce::CharPointer_UTF8 ("DEVKOMODO  \xe2\x80\xa2  DCO CLASSIC  \xe2\x80\xa2  MODERN EDITION")), juce::dontSendNotification);
             brand.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
             brand.setColour (juce::Label::textColourId, juce::Colours::white.interpolatedWith (accent, 0.55f));
             brand.setJustificationType (juce::Justification::centredRight);

@@ -274,6 +274,7 @@ void JunoEmuVoice::startNote (int midiNoteNumber, float noteVelocity, juce::Synt
     currentFreq = targetFreq;
     phase = 0.0f;
     phase2 = random.nextFloat();
+    pwmPhase = 0.0f;
     unisonPhaseA = 0.0f;
     unisonPhaseB = 0.0f;
     subPhase = 0.0f;
@@ -454,7 +455,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         const float dt2 = juce::jlimit (0.000001f, 0.49f, freq2 / (float) sampleRate);
 
         const float pwm = juce::jlimit (0.05f, 0.95f,
-            pulseBase + std::sin (2.0f * pi * lfoPhase) * pwmDepth * 0.45f);
+            pulseBase + std::sin (2.0f * pi * pwmPhase) * pwmDepth * 0.45f);
         const float sawA = oscSaw (unisonPhaseA, dtA);
         const float sawB = oscSaw (unisonPhaseB, dtB);
         const float pulseA = oscPulse (unisonPhaseA, dtA, pwm);
@@ -517,12 +518,14 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
 
         phase += dt;
         phase2 += dt2;
+        pwmPhase += pwmRate / (float) sampleRate;
         unisonPhaseA += dtA;
         unisonPhaseB += dtB;
         subPhase += subDt;
         lfoPhase += lfoRate / (float) sampleRate;
         phase -= std::floor (phase);
         phase2 -= std::floor (phase2);
+        pwmPhase -= std::floor (pwmPhase);
         unisonPhaseA -= std::floor (unisonPhaseA);
         unisonPhaseB -= std::floor (unisonPhaseB);
         subPhase -= std::floor (subPhase);

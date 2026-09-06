@@ -72,12 +72,21 @@ private:
     float nextNoise() noexcept;
     void updateEnvelopeCoefficients();
 
+    // Cytomic-style topology-preserving-transform state-variable filter.
+    // One call produces LP/BP/HP/Notch simultaneously from the same two
+    // state variables, so switching "filter type" is just picking which
+    // output to use -- this is what lets FILTER_TYPE be a free selector
+    // instead of needing a different filter structure per mode.
+    struct SvfOutputs { float lp, bp, hp, notch; };
+    SvfOutputs processSvf (float* state, float input, float g, float k) const noexcept;
+
     JunoEmuAudioProcessor& processor;
     double sampleRate = 44100.0;
     int note = 0;
     float velocity = 0.0f;
     float phase = 0.0f;
     float phase2 = 0.0f;
+    float pwmPhase = 0.0f;
     float unisonPhaseA = 0.0f;
     float unisonPhaseB = 0.0f;
     float subPhase = 0.0f;

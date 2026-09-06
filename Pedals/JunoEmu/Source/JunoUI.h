@@ -552,8 +552,6 @@ namespace junoui
               tooltipWindow (this, 600)
         {
             setOpaque (true);
-            setResizable (true, true);
-            setResizeLimits (1000, 620, 1500, 940);
 
             buildHeader();
             buildVisualizers();
@@ -566,6 +564,8 @@ namespace junoui
             presetBox.setSelectedId (1, juce::dontSendNotification);
             presetBox.onChange = [this] { applySelectedPreset(); };
 
+            setResizable (true, true);
+            setResizeLimits (1000, 620, 1500, 940);
             setSize (1180, 680);
             startTimerHz (15);
         }

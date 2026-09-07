@@ -600,9 +600,13 @@ namespace junoui
               tooltipWindow (this, 600)
         {
             setOpaque (true);
-            setResizable (true, true);
-            setResizeLimits (1080, 660, 1600, 980);
 
+            // Build every child component FIRST. setResizeLimits()/setSize()
+            // below trigger an immediate synchronous resized() call as part
+            // of applying the new bounds -- if that fires before waveScope
+            // and the panels exist, resized() dereferences null unique_ptrs.
+            // (Caught via ASan: "member access within null pointer of type
+            // WaveScopeDisplay" -- this was the FL Studio load crash.)
             buildHeader();
             buildVisualizers();
             buildClassicSections();
@@ -614,6 +618,8 @@ namespace junoui
             presetBox.setSelectedId (1, juce::dontSendNotification);
             presetBox.onChange = [this] { applySelectedPreset(); };
 
+            setResizable (true, true);
+            setResizeLimits (1080, 660, 1600, 980);
             setSize (1280, 720);
             startTimerHz (15);
         }
@@ -647,7 +653,7 @@ namespace junoui
 
             g.setColour (juce::Colours::white.withAlpha (0.28f));
             g.setFont (juce::Font (juce::FontOptions (9.0f)));
-            g.drawText ("6 VOICES  \u2022  DCO / HPF / VCF / VCA  \u2022  CHORUS I & II",
+            g.drawText ("6 VOICES  -  DCO / HPF / VCF / VCA  -  CHORUS I & II",
                         footerArea, juce::Justification::centred);
         }
 
@@ -732,7 +738,7 @@ namespace junoui
             title.setColour (juce::Label::textColourId, juce::Colours::white);
             addAndMakeVisible (title);
 
-            brand.setText ("DEVKOMODO  \u2022  DCO CLASSIC  \u2022  MODERN EDITION", juce::dontSendNotification);
+            brand.setText ("DEVKOMODO  -  DCO CLASSIC  -  MODERN EDITION", juce::dontSendNotification);
             brand.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
             brand.setColour (juce::Label::textColourId, juce::Colours::white.interpolatedWith (accent, 0.55f));
             brand.setJustificationType (juce::Justification::centredRight);

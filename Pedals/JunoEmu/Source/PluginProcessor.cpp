@@ -381,10 +381,8 @@ JunoEmuVoice::SvfOutputs JunoEmuVoice::processSvf (float* state, float input, fl
     // Cytomic/Andrew Simper "topology-preserving-transform" state-variable
     // filter: two integrator state variables (state[0] = ic1eq, state[1] =
     // ic2eq) yield LP/BP/HP/Notch simultaneously with no unit delay in the
-    // feedback path, so it stays stable and clean even as resonance nears
-    // self-oscillation -- the digitally-precise character Serum's filters
-    // are known for, as opposed to the softer, saturating analogue ladder
-    // this replaces.
+    // feedback path, so it stays stable even as resonance nears
+    // self-oscillation.
     const float a1 = 1.0f / (1.0f + g * (g + k));
     const float a2 = g * a1;
     const float a3 = g * a2;
@@ -393,6 +391,17 @@ JunoEmuVoice::SvfOutputs JunoEmuVoice::processSvf (float* state, float input, fl
     const float v2 = state[1] + a2 * state[0] + a3 * v3;
     state[0] = 2.0f * v1 - state[0];
     state[1] = 2.0f * v2 - state[1];
+
+    // Soft-saturate the integrator states themselves -- the way a real VCF's
+    // op-amps would start clipping internally as resonance drives their
+    // swing higher. tanh(x*0.8)*1.25 sits at ~unity gain for small signals
+    // (so low-resonance patches are unaffected) and rounds off hard once the
+    // state grows near self-oscillation, so the resonant peak "sings"
+    // instead of ringing with harsh, perfectly-linear digital precision --
+    // this in-loop character, not just a clean pre-filter drive, is a big
+    // part of why Serum's filters feel more alive than a textbook SVF.
+    state[0] = std::tanh (state[0] * 0.8f) * 1.25f;
+    state[1] = std::tanh (state[1] * 0.8f) * 1.25f;
 
     SvfOutputs out;
     out.lp = v2;
@@ -546,19 +555,28 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         const float modCutoff = cutoff * noteTracking * velocityTracking
                               * std::pow (2.0f, envAmount * filterEnv * 2.0f + lfoToCutoffOct);
         const float fc = juce::jlimit (30.0f, (float) sampleRate * 0.45f, modCutoff);
-        const float g = std::tan (pi * fc / (float) sampleRate);
         // k = 1/Q: near 2 is barely resonant, near 0 rings and self-oscillates,
         // matching the aggressive top-end resonance behaviour Serum's filters
         // are known for.
         const float k = juce::jmap (juce::jlimit (0.0f, 1.0f, resonance), 0.0f, 1.0f, 1.85f, 0.04f);
 
         // Single drive stage ahead of the filter (rather than saturating every
-        // ladder stage) keeps the VCF itself clean/modern and puts all the
-        // grit under one clearly-labelled DRIVE control.
+        // ladder stage) keeps the input clean/modern and puts all the grit
+        // under one clearly-labelled DRIVE control.
         x = std::tanh (x * (1.0f + filterDrive * 3.0f));
 
-        SvfOutputs stage1L = processSvf (&filterL[0], x, g, k);
-        SvfOutputs stage1R = processSvf (&filterR[0], x, g, k);
+        // 2x-oversample the resonant filter itself. Serum's filters stay
+        // smooth right up through self-oscillation because their nonlinear
+        // stages effectively run above audio rate; ticking the ZDF-SVF twice
+        // per output sample (at half the cutoff coefficient) approximates
+        // that and cleans up the aliasing that the new in-loop saturation
+        // above would otherwise add, especially at high resonance.
+        const float gOS = std::tan (pi * fc / (2.0f * (float) sampleRate));
+
+        processSvf (&filterL[0], x, gOS, k);
+        SvfOutputs stage1L = processSvf (&filterL[0], x, gOS, k);
+        processSvf (&filterR[0], x, gOS, k);
+        SvfOutputs stage1R = processSvf (&filterR[0], x, gOS, k);
 
         float filteredL, filteredR;
         switch (filterType)
@@ -568,8 +586,10 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
                 break;
             case 1: // LP 24 dB: cascade a second lowpass stage (Serum's LP4)
             {
-                SvfOutputs stage2L = processSvf (&filterL[2], stage1L.lp, g, k);
-                SvfOutputs stage2R = processSvf (&filterR[2], stage1R.lp, g, k);
+                processSvf (&filterL[2], stage1L.lp, gOS, k);
+                SvfOutputs stage2L = processSvf (&filterL[2], stage1L.lp, gOS, k);
+                processSvf (&filterR[2], stage1R.lp, gOS, k);
+                SvfOutputs stage2R = processSvf (&filterR[2], stage1R.lp, gOS, k);
                 filteredL = stage2L.lp; filteredR = stage2R.lp;
                 break;
             }

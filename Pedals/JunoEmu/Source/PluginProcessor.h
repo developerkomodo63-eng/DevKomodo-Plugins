@@ -67,6 +67,7 @@ private:
     float oscPulse (float phase, float phaseInc, float width) const noexcept;
     float oscTriangle (float phase) const noexcept;
     float oscSine (float phase) const noexcept;
+    float oscWavetable (float phase, float position, float warp) const noexcept;
     float oscForWave (int waveType, float phase, float phaseInc, float width) const noexcept;
     float polyBlep (float t, float dt) const noexcept;
     float nextNoise() noexcept;
@@ -91,6 +92,8 @@ private:
     float unisonPhaseB = 0.0f;
     float subPhase = 0.0f;
     float lfoPhase = 0.0f;
+    float lfo2Phase = 0.0f;
+    float modEnv = 0.0f;
     float driftPhase = 0.0f;
     float driftValue = 0.0f;
     float env = 0.0f;
@@ -107,6 +110,8 @@ private:
     float filterAttack = 0.0f;
     float filterDecay = 0.0f;
     float filterRelease = 0.0f;
+    float modEnvAttack = 0.0f;
+    float modEnvDecay = 0.0f;
     bool releasing = false;
     juce::Random random;
 };

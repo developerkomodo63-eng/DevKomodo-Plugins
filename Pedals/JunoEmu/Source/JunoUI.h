@@ -684,8 +684,8 @@ namespace junoui
             presetBox.onChange = [this] { applySelectedPreset(); };
 
             setResizable (true, true);
-            setResizeLimits (1080, 660, 1600, 980);
-            setSize (1280, 720);
+            setResizeLimits (1120, 700, 1700, 1000);
+            setSize (1320, 760);
             startTimerHz (15);
         }
 
@@ -718,7 +718,7 @@ namespace junoui
 
             g.setColour (juce::Colours::white.withAlpha (0.28f));
             g.setFont (juce::Font (juce::FontOptions (9.0f)));
-            g.drawText ("6 VOICES  -  DCO / HPF / VCF / VCA  -  CHORUS I & II",
+            g.drawText ("6 VOICES  -  DCO / WT / FM / VCF / VCA  -  CHORUS I & II",
                         footerArea, juce::Justification::centred);
         }
 
@@ -754,10 +754,10 @@ namespace junoui
 
             // Row 1: DCO | OSC 2 | VCF, widths proportional to column count
             // (DCO 7 cols, OSC2 4 cols, VCF 8 cols -- VCF grew a TYPE selector)
-            const float r1Cols = 7.0f + 4.0f + 8.0f;
+            const float r1Cols = 11.0f + 6.0f + 8.0f;
             const int r1AvailW = row1.getWidth() - gap * 2;
-            const int dcoW = (int) (r1AvailW * (7.0f / r1Cols));
-            const int osc2W = (int) (r1AvailW * (4.0f / r1Cols));
+            const int dcoW = (int) (r1AvailW * (11.0f / r1Cols));
+            const int osc2W = (int) (r1AvailW * (6.0f / r1Cols));
             dcoPanel->setBounds (row1.removeFromLeft (dcoW));
             row1.removeFromLeft (gap);
             osc2Panel->setBounds (row1.removeFromLeft (osc2W));
@@ -766,11 +766,11 @@ namespace junoui
 
             // Row 2: LFO | ENV | FILTER ENV | CHORUS, widths proportional to column count
             // (LFO 3 cols, ENV 4 cols, FILTER ENV 3 cols -- both grew one control)
-            const float totalCols = 3.0f + 4.0f + 3.0f + 2.0f;
+            const float totalCols = 6.0f + 4.0f + 6.0f + 4.0f;
             const int availW = row2.getWidth() - gap * 3;
-            const int lfoW = (int) (availW * (3.0f / totalCols));
+            const int lfoW = (int) (availW * (6.0f / totalCols));
             const int envW = (int) (availW * (4.0f / totalCols));
-            const int fenvW = (int) (availW * (3.0f / totalCols));
+            const int fenvW = (int) (availW * (6.0f / totalCols));
             lfoPanel->setBounds (row2.removeFromLeft (lfoW));
             row2.removeFromLeft (gap);
             envPanel->setBounds (row2.removeFromLeft (envW));
@@ -830,20 +830,26 @@ namespace junoui
         {
             dcoPanel = std::make_unique<PanelSection> ("DCO", accent);
             addAndMakeVisible (*dcoPanel);
-            addSelector (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE" }, "WAVE");
+            addSelector (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE", "WT" }, "WAVE");
             addClassicSlider (*dcoPanel, "PULSE", "PW");
             addClassicSlider (*dcoPanel, "PWM_RATE", "PWM RT");
             addClassicSlider (*dcoPanel, "PWM_DEPTH", "PWM DEP");
             addClassicSlider (*dcoPanel, "SUB", "SUB");
             addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
+            addClassicSlider (*dcoPanel, "WT_POS", "WT POS");
+            addClassicSlider (*dcoPanel, "WT_WARP", "WT WARP");
+            addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
+            addClassicSlider (*dcoPanel, "HYBRID", "HYBRID");
 
             osc2Panel = std::make_unique<PanelSection> ("OSC 2", accent);
             addAndMakeVisible (*osc2Panel);
-            addSelector (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE" }, "WAVE");
+            addSelector (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE", "WT" }, "WAVE");
             addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
             addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
             addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
+            addClassicSlider (*osc2Panel, "OSC2_WT_POS", "WT POS");
+            addClassicSlider (*osc2Panel, "FM_AMOUNT", "FM");
 
             vcfPanel = std::make_unique<PanelSection> ("HPF / VCF", accent);
             addAndMakeVisible (*vcfPanel);
@@ -861,6 +867,9 @@ namespace junoui
             addClassicSlider (*lfoPanel, "LFO_RATE", "RATE");
             addClassicSlider (*lfoPanel, "LFO_DEPTH", "VIBRATO");
             addClassicSlider (*lfoPanel, "LFO_FILTER", "VCF LFO");
+            addClassicSlider (*lfoPanel, "LFO2_RATE", "LFO2 RT");
+            addClassicSlider (*lfoPanel, "LFO2_DEPTH", "LFO2 DEP");
+            addClassicSlider (*lfoPanel, "LFO2_PITCH", "LFO2 PCH");
 
             envPanel = std::make_unique<PanelSection> ("ENVELOPE (VCA)", accent);
             addAndMakeVisible (*envPanel);
@@ -874,11 +883,16 @@ namespace junoui
             addClassicSlider (*fenvPanel, "FILTER_ATTACK", "F.ATK");
             addClassicSlider (*fenvPanel, "FILTER_DECAY", "F.DEC");
             addClassicSlider (*fenvPanel, "FILTER_SUSTAIN", "F.SUS");
+            addClassicSlider (*fenvPanel, "MODENV_ATTACK", "M.ATK");
+            addClassicSlider (*fenvPanel, "MODENV_DECAY", "M.DEC");
+            addClassicSlider (*fenvPanel, "MODENV_AMOUNT", "M.AMT");
 
             fxPanel = std::make_unique<PanelSection> ("CHORUS", accent);
             addAndMakeVisible (*fxPanel);
             addSelector (*fxPanel, "CHORUS", { "OFF", "I", "II" }, "MODE");
             addClassicSlider (*fxPanel, "CHORUS_MIX", "MIX");
+            addClassicSlider (*fxPanel, "GLIDE", "GLIDE");
+            addClassicSlider (*fxPanel, "VEL_VCA", "VEL VCA");
         }
 
         void buildModernSection()
@@ -886,6 +900,7 @@ namespace junoui
             modernPanel = std::make_unique<PanelSection> ("MODERN EXTRAS", accent);
             addAndMakeVisible (*modernPanel);
             addModernKnob (*modernPanel, "UNISON", "UNISON");
+            addModernKnob (*modernPanel, "HYBRID", "A/D MIX");
             addModernKnob (*modernPanel, "DETUNE", "DETUNE");
             addModernKnob (*modernPanel, "DRIFT", "DRIFT");
             addModernKnob (*modernPanel, "DELAY_TIME", "DLY TIME");

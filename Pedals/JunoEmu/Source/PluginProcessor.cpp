@@ -32,13 +32,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
         p.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, lo, hi, def));
     };
 
-    choice ("WAVE", "DCO Wave", { "Saw", "Pulse", "Saw + Pulse", "Triangle", "Sine" }, 2);
+    choice ("WAVE", "DCO Wave", { "Saw", "Pulse", "Saw + Pulse", "Triangle", "Sine", "Wavetable" }, 2);
     f ("PULSE", "Pulse Width", 0.05f, 0.95f, 0.50f);
     f ("PWM_RATE", "PWM Rate", 0.05f, 12.0f, 0.55f);
     f ("PWM_DEPTH", "PWM Depth", 0.0f, 1.0f, 0.0f);
     f ("SUB", "Sub Osc", 0.0f, 1.0f, 0.35f);
     choice ("SUB_OCT", "Sub Octave", { "-1 Oct", "-2 Oct" }, 0);
     f ("NOISE", "Noise", 0.0f, 1.0f, 0.04f);
+    f ("WT_POS", "Wavetable Position", 0.0f, 1.0f, 0.0f);
+    f ("WT_WARP", "Wavetable Warp", -1.0f, 1.0f, 0.0f);
+    f ("WT_LEVEL", "Wavetable Level", 0.0f, 1.0f, 0.0f);
+    f ("FM_AMOUNT", "FM Amount", 0.0f, 1.0f, 0.0f);
+    f ("HYBRID", "Analog / Modern", 0.0f, 1.0f, 0.0f);
     f ("HPF", "HPF", 0.0f, 1.0f, 0.18f);
     f ("CUTOFF", "VCF Cutoff", 60.0f, 18000.0f, 4200.0f);
     f ("RESONANCE", "VCF Resonance", 0.0f, 1.0f, 0.18f);
@@ -68,13 +73,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     // hit the filter for wobble/talk effects; this gives the same result
     // without a full mod-matrix, as a dedicated depth knob.
     f ("LFO_FILTER", "LFO to Cutoff", 0.0f, 1.0f, 0.0f);
+    f ("LFO2_RATE", "LFO 2 Rate", 0.05f, 20.0f, 1.2f);
+    f ("LFO2_DEPTH", "LFO 2 Depth", 0.0f, 1.0f, 0.0f);
+    f ("LFO2_PITCH", "LFO 2 Pitch", 0.0f, 1.0f, 0.0f);
+    f ("MODENV_ATTACK", "Mod Env Attack", 0.001f, 2.0f, 0.02f);
+    f ("MODENV_DECAY", "Mod Env Decay", 0.005f, 4.0f, 0.35f);
+    f ("MODENV_AMOUNT", "Mod Env Amount", -1.0f, 1.0f, 0.0f);
     // Second oscillator: an independently tuned voice layered on top of the
     // classic DCO. Defaults to silent (LEVEL 0) so existing patches and the
     // classic single-DCO character are unaffected until it's dialed in.
-    choice ("OSC2_WAVE", "Osc 2 Wave", { "Saw", "Pulse", "Triangle", "Sine" }, 0);
+    choice ("OSC2_WAVE", "Osc 2 Wave", { "Saw", "Pulse", "Triangle", "Sine", "Wavetable" }, 0);
     f ("OSC2_SEMI", "Osc 2 Semitone", -24.0f, 24.0f, 0.0f);
     f ("OSC2_FINE", "Osc 2 Fine", -50.0f, 50.0f, 0.0f);
     f ("OSC2_LEVEL", "Osc 2 Level", 0.0f, 1.0f, 0.0f);
+    f ("OSC2_WT_POS", "Osc 2 WT Position", 0.0f, 1.0f, 0.0f);
     // Modern controls: these extend the classic architecture without
     // replacing its core Juno-style DCO/VCF/chorus character.
     f ("UNISON", "Modern Unison", 0.0f, 1.0f, 0.0f);
@@ -91,6 +103,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("REVERB_MIX", "Modern Reverb Mix", 0.0f, 1.0f, 0.0f);
     f ("WIDTH", "Stereo Width", 0.0f, 1.0f, 0.72f);
     f ("DRIVE", "Output Drive", 0.0f, 1.0f, 0.0f);
+    f ("GLIDE", "Glide", 0.0f, 0.5f, 0.015f);
+    f ("VEL_VCA", "Velocity VCA", 0.0f, 1.0f, 0.0f);
     f ("LEVEL", "Level", -24.0f, 6.0f, -3.0f);
     return { p.begin(), p.end() };
 }
@@ -296,6 +310,8 @@ void JunoEmuVoice::startNote (int midiNoteNumber, float noteVelocity, juce::Synt
     unisonPhaseB = 0.0f;
     subPhase = 0.0f;
     lfoPhase = random.nextFloat();
+    lfo2Phase = random.nextFloat();
+    modEnv = 0.0f;
     driftPhase = random.nextFloat();
     driftValue = random.nextFloat() * 2.0f - 1.0f;
     env = 0.0f;
@@ -359,6 +375,43 @@ float JunoEmuVoice::oscSine (float p) const noexcept
     return std::sin (2.0f * pi * p);
 }
 
+float JunoEmuVoice::oscWavetable (float p, float position, float warp) const noexcept
+{
+    // Small built-in wavetable: no external assets, no allocations, and only
+    // a handful of cheap analytic shapes. Position morphs continuously while
+    // warp bends the phase before the shape lookup, giving a modern synth
+    // character without turning the instrument into a CPU-heavy sampler.
+    float phaseWarp = p;
+    const float amount = juce::jlimit (-0.95f, 0.95f, warp);
+    phaseWarp = phaseWarp + amount * std::sin (2.0f * pi * phaseWarp) * 0.25f;
+    phaseWarp -= std::floor (phaseWarp);
+
+    const float pos = juce::jlimit (0.0f, 1.0f, position) * 7.0f;
+    const int a = juce::jlimit (0, 7, (int) std::floor (pos));
+    const int b = juce::jmin (7, a + 1);
+    const float mix = pos - (float) a;
+    auto shape = [phaseWarp] (int index) noexcept
+    {
+        switch (index)
+        {
+            case 0: return std::sin (2.0f * pi * phaseWarp);
+            case 1: return 4.0f * std::abs (phaseWarp - 0.5f) - 1.0f;
+            case 2: return 2.0f * phaseWarp - 1.0f;
+            case 3: return phaseWarp < 0.5f ? 1.0f : -1.0f;
+            case 4: return 0.72f * std::sin (2.0f * pi * phaseWarp)
+                         + 0.28f * std::sin (4.0f * pi * phaseWarp);
+            case 5: return 0.58f * std::sin (2.0f * pi * phaseWarp)
+                         + 0.30f * std::sin (6.0f * pi * phaseWarp)
+                         + 0.12f * std::sin (10.0f * pi * phaseWarp);
+            case 6: return std::sin (2.0f * pi * phaseWarp)
+                         * (0.65f + 0.35f * std::sin (2.0f * pi * phaseWarp));
+            default: return 0.65f * (2.0f * phaseWarp - 1.0f)
+                         + 0.35f * std::sin (6.0f * pi * phaseWarp);
+        }
+    };
+    return shape (a) + (shape (b) - shape (a)) * mix;
+}
+
 float JunoEmuVoice::oscForWave (int waveType, float p, float dt, float width) const noexcept
 {
     switch (waveType)
@@ -420,6 +473,8 @@ void JunoEmuVoice::updateEnvelopeCoefficients()
     filterAttack = envCoeff (parameter (s, "FILTER_ATTACK", 0.01f), sampleRate);
     filterDecay = envCoeff (parameter (s, "FILTER_DECAY", 0.25f), sampleRate);
     filterRelease = envCoeff (parameter (s, "RELEASE", 0.35f), sampleRate);
+    modEnvAttack = envCoeff (parameter (s, "MODENV_ATTACK", 0.02f), sampleRate);
+    modEnvDecay = envCoeff (parameter (s, "MODENV_DECAY", 0.35f), sampleRate);
 }
 
 void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
@@ -432,6 +487,11 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float subLevel = parameter (s, "SUB", 0.35f);
     const int subOct = (int) parameter (s, "SUB_OCT", 0.0f);
     const float noiseLevel = parameter (s, "NOISE", 0.04f);
+    const float wtPos = parameter (s, "WT_POS", 0.0f);
+    const float wtWarp = parameter (s, "WT_WARP", 0.0f);
+    const float wtLevel = parameter (s, "WT_LEVEL", 0.0f);
+    const float fmAmount = parameter (s, "FM_AMOUNT", 0.0f);
+    const float hybrid = parameter (s, "HYBRID", 0.0f);
     const float hpf = parameter (s, "HPF", 0.18f);
     const float cutoff = parameter (s, "CUTOFF", 4200.0f);
     const float resonance = parameter (s, "RESONANCE", 0.18f);
@@ -441,6 +501,10 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float lfoRate = parameter (s, "LFO_RATE", 4.8f);
     const float lfoDepth = parameter (s, "LFO_DEPTH", 0.0f);
     const float lfoFilterDepth = parameter (s, "LFO_FILTER", 0.0f);
+    const float lfo2Rate = parameter (s, "LFO2_RATE", 1.2f);
+    const float lfo2Depth = parameter (s, "LFO2_DEPTH", 0.0f);
+    const float lfo2Pitch = parameter (s, "LFO2_PITCH", 0.0f);
+    const float modEnvAmount = parameter (s, "MODENV_AMOUNT", 0.0f);
     const float unison = parameter (s, "UNISON", 0.0f);
     const float detuneCents = parameter (s, "DETUNE", 7.0f);
     const float drift = parameter (s, "DRIFT", 0.08f);
@@ -451,7 +515,9 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float osc2Semi = parameter (s, "OSC2_SEMI", 0.0f);
     const float osc2Fine = parameter (s, "OSC2_FINE", 0.0f);
     const float osc2Level = parameter (s, "OSC2_LEVEL", 0.0f);
-    const float glide = 0.015f;
+    const float osc2WtPos = parameter (s, "OSC2_WT_POS", 0.0f);
+    const float glide = parameter (s, "GLIDE", 0.015f);
+    const float velocityVca = parameter (s, "VEL_VCA", 0.0f);
     const float glideCoeff = std::exp (-1.0f / (glide * (float) sampleRate));
     const float hpFreq = juce::jmap (hpf, 20.0f, 700.0f);
 
@@ -468,11 +534,17 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
                 filterEnv = 1.0f - (1.0f - filterEnv) * filterAttack;
             else
                 filterEnv = filterSustain + (filterEnv - filterSustain) * filterDecay;
+
+            if (modEnv < 0.999f)
+                modEnv = 1.0f - (1.0f - modEnv) * modEnvAttack;
+            else
+                modEnv *= modEnvDecay;
         }
         else
         {
             env *= envRelease;
             filterEnv *= filterRelease;
+            modEnv *= filterRelease;
             if (env < 0.00005f)
             {
                 clearCurrentNote();
@@ -494,8 +566,11 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         }
 
         const float vibrato = std::sin (2.0f * pi * lfoPhase) * lfoDepth * 0.035f;
+        const float modernLfoPitch = std::sin (2.0f * pi * lfo2Phase) * lfo2Depth * lfo2Pitch * 0.08f;
+        const float modPitch = std::pow (2.0f, modEnv * modEnvAmount * 0.08f);
         const float driftCents = drift * driftValue * 3.0f;
-        const float freq = currentFreq * (1.0f + vibrato) * std::pow (2.0f, driftCents / 1200.0f);
+        const float freq = currentFreq * (1.0f + vibrato + modernLfoPitch)
+                          * modPitch * std::pow (2.0f, driftCents / 1200.0f);
         const float detuneRatio = std::pow (2.0f, detuneCents / 1200.0f);
         const float freqA = freq * (1.0f - unison * (detuneRatio - 1.0f));
         const float freqB = freq * (1.0f + unison * (detuneRatio - 1.0f));
@@ -534,8 +609,18 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         const float dco = mainDco * (1.0f - unison * 0.55f) + unisonDco * (unison * 0.55f);
         const float sub = (subPhase < 0.5f ? 1.0f : -1.0f) * subLevel;
         const float noise = nextNoise() * noiseLevel;
-        const float osc2 = oscForWave (osc2Wave, phase2, dt2, pwm);
-        float x = (dco * 0.62f + sub * 0.30f + noise * 0.16f + osc2 * osc2Level * 0.55f) * velocity;
+        const float wavetable = oscWavetable (phase, wtPos, wtWarp);
+        const float fmCarrier = std::sin (2.0f * pi * phase + oscWavetable (phase2, wtPos, wtWarp) * fmAmount * 1.6f);
+        const float modernBlend = juce::jlimit (0.0f, 1.0f, hybrid);
+        const float modernOsc = wavetable * wtLevel + fmCarrier * fmAmount * 0.22f;
+        const float mainOsc = (wave == 5)
+                            ? dco * (1.0f - modernBlend) + modernOsc * modernBlend
+                            : dco * (1.0f - modernBlend * 0.35f) + modernOsc * 0.55f;
+        const float osc2 = (osc2Wave == 4)
+                         ? oscWavetable (phase2, osc2WtPos, wtWarp)
+                         : oscForWave (osc2Wave, phase2, dt2, pwm);
+        float x = (mainOsc
+                 + sub * 0.30f + noise * 0.16f + osc2 * osc2Level * 0.55f) * velocity;
 
         // Serum-style VCF: cutoff modulation is computed in semitone/octave
         // space (note tracking, velocity and the filter envelope all stack
@@ -551,7 +636,8 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         // full LFO_FILTER depth, on the same LFO phase that drives vibrato,
         // so one LFO section modulates both pitch and filter as in Serum's
         // "drag an LFO onto the cutoff knob" workflow.
-        const float lfoToCutoffOct = std::sin (2.0f * pi * lfoPhase) * lfoFilterDepth * 2.0f;
+        const float lfoToCutoffOct = std::sin (2.0f * pi * lfoPhase) * lfoFilterDepth * 2.0f
+                                  + std::sin (2.0f * pi * lfo2Phase) * lfo2Depth * 1.5f;
         const float modCutoff = cutoff * noteTracking * velocityTracking
                               * std::pow (2.0f, envAmount * filterEnv * 2.0f + lfoToCutoffOct);
         const float fc = juce::jlimit (30.0f, (float) sampleRate * 0.45f, modCutoff);
@@ -573,9 +659,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         // above would otherwise add, especially at high resonance.
         const float gOS = std::tan (pi * fc / (2.0f * (float) sampleRate));
 
-        processSvf (&filterL[0], x, gOS, k);
         SvfOutputs stage1L = processSvf (&filterL[0], x, gOS, k);
-        processSvf (&filterR[0], x, gOS, k);
         SvfOutputs stage1R = processSvf (&filterR[0], x, gOS, k);
 
         float filteredL, filteredR;
@@ -586,9 +670,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
                 break;
             case 1: // LP 24 dB: cascade a second lowpass stage (Serum's LP4)
             {
-                processSvf (&filterL[2], stage1L.lp, gOS, k);
                 SvfOutputs stage2L = processSvf (&filterL[2], stage1L.lp, gOS, k);
-                processSvf (&filterR[2], stage1R.lp, gOS, k);
                 SvfOutputs stage2R = processSvf (&filterR[2], stage1R.lp, gOS, k);
                 filteredL = stage2L.lp; filteredR = stage2R.lp;
                 break;
@@ -612,9 +694,10 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         hpStateR = hpCoeff * hpStateR + (1.0f - hpCoeff) * filteredR;
         const float outR = filteredR - hpStateR * hpf * 0.85f;
 
-        outputBuffer.addSample (0, startSample + i, outL * env * 0.72f);
+        const float vcaVelocity = (1.0f - velocityVca) + velocityVca * velocity;
+        outputBuffer.addSample (0, startSample + i, outL * env * vcaVelocity * 0.72f);
         if (outputBuffer.getNumChannels() > 1)
-            outputBuffer.addSample (1, startSample + i, outR * env * 0.72f);
+            outputBuffer.addSample (1, startSample + i, outR * env * vcaVelocity * 0.72f);
 
         phase += dt;
         phase2 += dt2;
@@ -623,6 +706,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         unisonPhaseB += dtB;
         subPhase += subDt;
         lfoPhase += lfoRate / (float) sampleRate;
+        lfo2Phase += lfo2Rate / (float) sampleRate;
         phase -= std::floor (phase);
         phase2 -= std::floor (phase2);
         pwmPhase -= std::floor (pwmPhase);
@@ -630,6 +714,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         unisonPhaseB -= std::floor (unisonPhaseB);
         subPhase -= std::floor (subPhase);
         lfoPhase -= std::floor (lfoPhase);
+        lfo2Phase -= std::floor (lfo2Phase);
     }
 }
 

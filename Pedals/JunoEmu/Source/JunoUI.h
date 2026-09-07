@@ -477,31 +477,67 @@ namespace junoui
             auto area = b.reduced (10.0f, 16.0f);
             const float cutoff = raw ("CUTOFF", 4200.0f);
             const float reso = juce::jlimit (0.0f, 1.0f, raw ("RESONANCE", 0.18f));
+            const int filterType = (int) raw ("FILTER_TYPE", 1.0f);
 
             const float minF = std::log10 (40.0f), maxF = std::log10 (20000.0f);
             const float cutNorm = juce::jlimit (0.0f, 1.0f,
                 (std::log10 (juce::jmax (40.0f, cutoff)) - minF) / (maxF - minF));
 
+            // Shape depends on the selected Serum-style filter type: LP/HP
+            // are a shelf-and-slope either side of cutoff (24 dB steeper
+            // than 12 dB), BP is a bump centred on cutoff, Notch is a dip.
             juce::Path path;
             constexpr int n = 90;
             for (int i = 0; i <= n; ++i)
             {
                 const float t = (float) i / (float) n;
-                float mag;
-                if (t < cutNorm)
+                const float dist = t - cutNorm; // positive = above cutoff
+                float mag = 1.0f;
+                switch (filterType)
                 {
-                    mag = 1.0f;
-                    const float dist = cutNorm - t;
-                    if (dist < 0.08f)
-                        mag += reso * (1.0f - dist / 0.08f) * 0.9f;
-                }
-                else
-                {
-                    const float oct = (t - cutNorm) / 0.12f;
-                    mag = std::pow (0.5f, oct);
-                    const float distFromCut = t - cutNorm;
-                    if (distFromCut < 0.05f)
-                        mag += reso * (1.0f - distFromCut / 0.05f) * 0.9f;
+                    case 0: // LP 12dB
+                    case 1: // LP 24dB
+                    {
+                        const float slope = filterType == 1 ? 0.08f : 0.14f;
+                        if (dist <= 0.0f)
+                        {
+                            mag = 1.0f + (-dist < 0.08f ? reso * (1.0f - (-dist) / 0.08f) * 0.9f : 0.0f);
+                        }
+                        else
+                        {
+                            mag = std::pow (0.5f, dist / slope);
+                            if (dist < 0.05f)
+                                mag += reso * (1.0f - dist / 0.05f) * 0.9f;
+                        }
+                        break;
+                    }
+                    case 2: // HP 12dB
+                    {
+                        const float slope = 0.14f;
+                        if (dist >= 0.0f)
+                        {
+                            mag = 1.0f + (dist < 0.08f ? reso * (1.0f - dist / 0.08f) * 0.9f : 0.0f);
+                        }
+                        else
+                        {
+                            mag = std::pow (0.5f, (-dist) / slope);
+                            if (-dist < 0.05f)
+                                mag += reso * (1.0f - (-dist) / 0.05f) * 0.9f;
+                        }
+                        break;
+                    }
+                    case 3: // BP 12dB
+                    {
+                        const float width = 0.09f + (1.0f - reso) * 0.14f;
+                        mag = std::pow (0.5f, std::abs (dist) / width) * (0.55f + reso * 0.8f);
+                        break;
+                    }
+                    default: // Notch 12dB
+                    {
+                        const float width = 0.05f + (1.0f - reso) * 0.05f;
+                        mag = 1.0f - std::pow (0.5f, std::abs (dist) / width) * (0.85f + reso * 0.1f);
+                        break;
+                    }
                 }
                 const float x = area.getX() + t * area.getWidth();
                 const float y = area.getBottom() - juce::jlimit (0.0f, 1.35f, mag) * area.getHeight() * 0.72f;
@@ -515,9 +551,11 @@ namespace junoui
             g.setColour (juce::Colours::white.withAlpha (0.18f));
             g.drawVerticalLine ((int) cx, area.getY(), area.getBottom());
 
+            static constexpr const char* typeNames[] = { "LP12", "LP24", "HP12", "BP12", "NOTCH" };
             g.setColour (juce::Colours::white.withAlpha (0.38f));
             g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
-            g.drawText ("VCF RESPONSE", getLocalBounds().reduced (10, 5), juce::Justification::topLeft);
+            g.drawText (juce::String ("VCF RESPONSE - ") + typeNames[juce::jlimit (0, 4, filterType)],
+                        getLocalBounds().reduced (10, 5), juce::Justification::topLeft);
         }
 
     private:
@@ -546,45 +584,72 @@ namespace junoui
                 { "SUB", 0.35f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.04f }, { "HPF", 0.18f },
                 { "CUTOFF", 4200.0f }, { "RESONANCE", 0.18f }, { "ENV_AMOUNT", 0.45f },
                 { "ATTACK", 0.008f }, { "DECAY", 0.22f }, { "SUSTAIN", 0.72f }, { "RELEASE", 0.35f },
-                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.25f },
-                { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f },
+                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.25f }, { "FILTER_SUSTAIN", 0.72f },
+                { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.38f }, { "WIDTH", 0.72f }, { "LEVEL", -3.0f } } },
             { "CLASSIC PAD", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.35f },
                 { "SUB", 0.18f }, { "NOISE", 0.0f }, { "HPF", 0.10f },
                 { "CUTOFF", 2400.0f }, { "RESONANCE", 0.14f }, { "ENV_AMOUNT", 0.30f },
                 { "ATTACK", 0.60f }, { "DECAY", 0.80f }, { "SUSTAIN", 0.82f }, { "RELEASE", 1.30f },
-                { "FILTER_ATTACK", 0.45f }, { "FILTER_DECAY", 0.60f },
-                { "LFO_RATE", 3.2f }, { "LFO_DEPTH", 0.15f },
+                { "FILTER_ATTACK", 0.45f }, { "FILTER_DECAY", 0.60f }, { "FILTER_SUSTAIN", 0.82f },
+                { "LFO_RATE", 3.2f }, { "LFO_DEPTH", 0.15f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.62f }, { "WIDTH", 0.95f }, { "LEVEL", -5.0f } } },
             { "SUB BASS", {
                 { "WAVE", 1.0f }, { "PULSE", 0.30f }, { "SUB", 0.80f }, { "SUB_OCT", 1.0f }, { "NOISE", 0.0f },
                 { "HPF", 0.0f }, { "CUTOFF", 900.0f }, { "RESONANCE", 0.25f }, { "ENV_AMOUNT", 0.5f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.30f }, { "SUSTAIN", 0.60f }, { "RELEASE", 0.20f },
-                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.20f },
-                { "LFO_RATE", 2.0f }, { "LFO_DEPTH", 0.0f },
+                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.20f }, { "FILTER_SUSTAIN", 0.60f },
+                { "LFO_RATE", 2.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 0.0f }, { "WIDTH", 0.30f }, { "LEVEL", -2.0f } } },
             { "STRING ENSEMBLE", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.40f },
                 { "SUB", 0.10f }, { "CUTOFF", 5200.0f }, { "RESONANCE", 0.10f }, { "ENV_AMOUNT", 0.20f },
                 { "ATTACK", 0.30f }, { "DECAY", 1.0f }, { "SUSTAIN", 0.85f }, { "RELEASE", 1.5f },
-                { "LFO_RATE", 4.5f }, { "LFO_DEPTH", 0.08f },
+                { "FILTER_SUSTAIN", 0.85f },
+                { "LFO_RATE", 4.5f }, { "LFO_DEPTH", 0.08f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.7f }, { "WIDTH", 1.0f }, { "LEVEL", -5.0f } } },
             { "LEAD SCREAM", {
                 { "WAVE", 0.0f }, { "PULSE", 0.5f }, { "SUB", 0.0f },
                 { "CUTOFF", 6000.0f }, { "RESONANCE", 0.45f }, { "ENV_AMOUNT", 0.6f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.15f }, { "SUSTAIN", 0.70f }, { "RELEASE", 0.25f },
+                { "FILTER_SUSTAIN", 0.70f },
                 { "UNISON", 0.6f }, { "DETUNE", 9.0f }, { "DRIFT", 0.10f },
                 { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", -12.0f }, { "OSC2_FINE", 4.0f }, { "OSC2_LEVEL", 0.35f },
-                { "LFO_RATE", 5.5f }, { "LFO_DEPTH", 0.05f },
+                { "LFO_RATE", 5.5f }, { "LFO_DEPTH", 0.05f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "DRIVE", 0.30f }, { "LEVEL", -3.0f } } },
             { "GLASS BELLS", {
                 { "WAVE", 4.0f }, { "SUB", 0.0f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
                 { "CUTOFF", 9000.0f }, { "RESONANCE", 0.05f }, { "ENV_AMOUNT", 0.15f },
                 { "ATTACK", 0.005f }, { "DECAY", 1.4f }, { "SUSTAIN", 0.0f }, { "RELEASE", 1.8f },
+                { "FILTER_SUSTAIN", 0.0f },
                 { "OSC2_WAVE", 3.0f }, { "OSC2_SEMI", 7.0f }, { "OSC2_FINE", 3.0f }, { "OSC2_LEVEL", 0.45f },
-                { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.03f },
+                { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.03f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.55f }, { "WIDTH", 1.0f }, { "LEVEL", -4.0f } } },
+            { "PLUCK", {
+                // Classic decoupled filter-envelope pluck: fast filter attack/decay
+                // snapping the VCF open and shut again while FILTER_SUSTAIN sits at
+                // 0, independent of the amp envelope -- this is the shape the shared
+                // sustain used to make impossible.
+                { "WAVE", 0.0f }, { "PULSE", 0.5f }, { "SUB", 0.15f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
+                { "CUTOFF", 1800.0f }, { "RESONANCE", 0.35f }, { "FILTER_TYPE", 1.0f }, { "ENV_AMOUNT", 0.85f },
+                { "ATTACK", 0.002f }, { "DECAY", 0.25f }, { "SUSTAIN", 0.0f }, { "RELEASE", 0.18f },
+                { "FILTER_ATTACK", 0.001f }, { "FILTER_DECAY", 0.12f }, { "FILTER_SUSTAIN", 0.0f },
+                { "FILTER_DRIVE", 0.15f }, { "KEYTRACK", 0.65f },
+                { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
+                { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.25f }, { "WIDTH", 0.6f }, { "LEVEL", -4.0f } } },
+            { "FILTER WOBBLE", {
+                // LFO_FILTER driving the cutoff is the Serum-style "wobble" --
+                // FILTER_SUSTAIN stays high so held notes don't die, and the LFO
+                // does all the movement.
+                { "WAVE", 1.0f }, { "PULSE", 0.35f }, { "SUB", 0.40f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.0f },
+                { "HPF", 0.0f }, { "CUTOFF", 1200.0f }, { "RESONANCE", 0.50f }, { "FILTER_TYPE", 1.0f },
+                { "ENV_AMOUNT", 0.2f },
+                { "ATTACK", 0.005f }, { "DECAY", 0.30f }, { "SUSTAIN", 0.80f }, { "RELEASE", 0.30f },
+                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.30f }, { "FILTER_SUSTAIN", 0.60f },
+                { "FILTER_DRIVE", 0.20f }, { "KEYTRACK", 0.30f },
+                { "LFO_RATE", 3.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.55f },
+                { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "WIDTH", 0.7f }, { "LEVEL", -4.0f } } },
         };
     }
 
@@ -688,8 +753,8 @@ namespace junoui
             filterView->setBounds (visualRow);
 
             // Row 1: DCO | OSC 2 | VCF, widths proportional to column count
-            // (DCO 7 cols, OSC2 4 cols, VCF 7 cols)
-            const float r1Cols = 7.0f + 4.0f + 7.0f;
+            // (DCO 7 cols, OSC2 4 cols, VCF 8 cols -- VCF grew a TYPE selector)
+            const float r1Cols = 7.0f + 4.0f + 8.0f;
             const int r1AvailW = row1.getWidth() - gap * 2;
             const int dcoW = (int) (r1AvailW * (7.0f / r1Cols));
             const int osc2W = (int) (r1AvailW * (4.0f / r1Cols));
@@ -700,11 +765,12 @@ namespace junoui
             vcfPanel->setBounds (row1);
 
             // Row 2: LFO | ENV | FILTER ENV | CHORUS, widths proportional to column count
-            const float totalCols = 2.0f + 4.0f + 2.0f + 2.0f;
+            // (LFO 3 cols, ENV 4 cols, FILTER ENV 3 cols -- both grew one control)
+            const float totalCols = 3.0f + 4.0f + 3.0f + 2.0f;
             const int availW = row2.getWidth() - gap * 3;
-            const int lfoW = (int) (availW * (2.0f / totalCols));
+            const int lfoW = (int) (availW * (3.0f / totalCols));
             const int envW = (int) (availW * (4.0f / totalCols));
-            const int fenvW = (int) (availW * (2.0f / totalCols));
+            const int fenvW = (int) (availW * (3.0f / totalCols));
             lfoPanel->setBounds (row2.removeFromLeft (lfoW));
             row2.removeFromLeft (gap);
             envPanel->setBounds (row2.removeFromLeft (envW));
@@ -783,6 +849,7 @@ namespace junoui
             addAndMakeVisible (*vcfPanel);
             addClassicSlider (*vcfPanel, "HPF", "HPF");
             addClassicSlider (*vcfPanel, "CUTOFF", "CUTOFF");
+            addSelector (*vcfPanel, "FILTER_TYPE", { "LP12", "LP24", "HP12", "BP12", "NOTCH" }, "TYPE");
             addClassicSlider (*vcfPanel, "RESONANCE", "RESO");
             addClassicSlider (*vcfPanel, "ENV_AMOUNT", "ENV AMT");
             addClassicSlider (*vcfPanel, "KEYTRACK", "KEY TRK");
@@ -793,6 +860,7 @@ namespace junoui
             addAndMakeVisible (*lfoPanel);
             addClassicSlider (*lfoPanel, "LFO_RATE", "RATE");
             addClassicSlider (*lfoPanel, "LFO_DEPTH", "VIBRATO");
+            addClassicSlider (*lfoPanel, "LFO_FILTER", "VCF LFO");
 
             envPanel = std::make_unique<PanelSection> ("ENVELOPE (VCA)", accent);
             addAndMakeVisible (*envPanel);
@@ -805,6 +873,7 @@ namespace junoui
             addAndMakeVisible (*fenvPanel);
             addClassicSlider (*fenvPanel, "FILTER_ATTACK", "F.ATK");
             addClassicSlider (*fenvPanel, "FILTER_DECAY", "F.DEC");
+            addClassicSlider (*fenvPanel, "FILTER_SUSTAIN", "F.SUS");
 
             fxPanel = std::make_unique<PanelSection> ("CHORUS", accent);
             addAndMakeVisible (*fxPanel);

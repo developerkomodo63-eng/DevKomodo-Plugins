@@ -42,6 +42,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("HPF", "HPF", 0.0f, 1.0f, 0.18f);
     f ("CUTOFF", "VCF Cutoff", 60.0f, 18000.0f, 4200.0f);
     f ("RESONANCE", "VCF Resonance", 0.0f, 1.0f, 0.18f);
+    // Serum-style multimode selector: the VCF is a zero-delay-feedback
+    // state-variable filter, so LP/HP/BP/Notch all come from the same
+    // topology -- "type" just picks which tap(s) to use, and the 24 dB/oct
+    // option cascades two lowpass stages for extra slope (Serum's LP2/LP4).
+    choice ("FILTER_TYPE", "Filter Type", { "LP 12dB", "LP 24dB", "HP 12dB", "BP 12dB", "Notch 12dB" }, 1);
     f ("ENV_AMOUNT", "VCF Env", -1.0f, 1.0f, 0.45f);
     f ("ATTACK", "Attack", 0.001f, 2.0f, 0.008f);
     f ("DECAY", "Decay", 0.005f, 3.0f, 0.22f);
@@ -49,8 +54,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("RELEASE", "Release", 0.01f, 4.0f, 0.35f);
     f ("FILTER_ATTACK", "Filter Attack", 0.001f, 2.0f, 0.01f);
     f ("FILTER_DECAY", "Filter Decay", 0.005f, 3.0f, 0.25f);
+    // Independent filter-envelope sustain: previously the VCF envelope decayed
+    // toward the shared amp SUSTAIN level, so a held note could never let the
+    // filter close all the way down without also killing the amplitude --
+    // exactly the thing that kills a "pluck" (attack + decay to near-silent
+    // cutoff while the note itself keeps sounding). Decoupling it lets a
+    // patch have a percussive filter snap with a sustained amp level, or
+    // vice versa, the way Serum's separate filter-envelope sustain does.
+    f ("FILTER_SUSTAIN", "Filter Sustain", 0.0f, 1.0f, 0.72f);
     f ("LFO_RATE", "LFO Rate", 0.05f, 12.0f, 4.8f);
     f ("LFO_DEPTH", "Vibrato", 0.0f, 1.0f, 0.0f);
+    // LFO routed to cutoff (in octaves) -- Serum's mod matrix lets any LFO
+    // hit the filter for wobble/talk effects; this gives the same result
+    // without a full mod-matrix, as a dedicated depth knob.
+    f ("LFO_FILTER", "LFO to Cutoff", 0.0f, 1.0f, 0.0f);
     // Second oscillator: an independently tuned voice layered on top of the
     // classic DCO. Defaults to silent (LEVEL 0) so existing patches and the
     // classic single-DCO character are unaffected until it's dialed in.
@@ -359,6 +376,32 @@ float JunoEmuVoice::nextNoise() noexcept
     return random.nextFloat() * 2.0f - 1.0f;
 }
 
+JunoEmuVoice::SvfOutputs JunoEmuVoice::processSvf (float* state, float input, float g, float k) const noexcept
+{
+    // Cytomic/Andrew Simper "topology-preserving-transform" state-variable
+    // filter: two integrator state variables (state[0] = ic1eq, state[1] =
+    // ic2eq) yield LP/BP/HP/Notch simultaneously with no unit delay in the
+    // feedback path, so it stays stable and clean even as resonance nears
+    // self-oscillation -- the digitally-precise character Serum's filters
+    // are known for, as opposed to the softer, saturating analogue ladder
+    // this replaces.
+    const float a1 = 1.0f / (1.0f + g * (g + k));
+    const float a2 = g * a1;
+    const float a3 = g * a2;
+    const float v3 = input - state[1];
+    const float v1 = a1 * state[0] + a2 * v3;
+    const float v2 = state[1] + a2 * state[0] + a3 * v3;
+    state[0] = 2.0f * v1 - state[0];
+    state[1] = 2.0f * v2 - state[1];
+
+    SvfOutputs out;
+    out.lp = v2;
+    out.bp = v1;
+    out.hp = input - k * v1 - v2;
+    out.notch = input - k * v1;
+    return out;
+}
+
 void JunoEmuVoice::updateEnvelopeCoefficients()
 {
     auto& s = processor.apvts;
@@ -385,8 +428,10 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float resonance = parameter (s, "RESONANCE", 0.18f);
     const float envAmount = parameter (s, "ENV_AMOUNT", 0.45f);
     const float sustain = parameter (s, "SUSTAIN", 0.72f);
+    const float filterSustain = parameter (s, "FILTER_SUSTAIN", 0.72f);
     const float lfoRate = parameter (s, "LFO_RATE", 4.8f);
     const float lfoDepth = parameter (s, "LFO_DEPTH", 0.0f);
+    const float lfoFilterDepth = parameter (s, "LFO_FILTER", 0.0f);
     const float unison = parameter (s, "UNISON", 0.0f);
     const float detuneCents = parameter (s, "DETUNE", 7.0f);
     const float drift = parameter (s, "DRIFT", 0.08f);
@@ -413,7 +458,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
             if (filterEnv < 0.999f)
                 filterEnv = 1.0f - (1.0f - filterEnv) * filterAttack;
             else
-                filterEnv = sustain + (filterEnv - sustain) * filterDecay;
+                filterEnv = filterSustain + (filterEnv - filterSustain) * filterDecay;
         }
         else
         {
@@ -483,34 +528,69 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         const float osc2 = oscForWave (osc2Wave, phase2, dt2, pwm);
         float x = (dco * 0.62f + sub * 0.30f + noise * 0.16f + osc2 * osc2Level * 0.55f) * velocity;
 
-        // Juno-style 24 dB/oct low-pass approximation: four cascaded one-pole
-        // stages with resonance fed back into the input. The slight saturation
-        // before the ladder gives the DCO/VCF path some analogue density.
+        // Serum-style VCF: cutoff modulation is computed in semitone/octave
+        // space (note tracking, velocity and the filter envelope all stack
+        // as exponential multipliers on the base cutoff) exactly as before,
+        // but it now drives a zero-delay-feedback state-variable filter
+        // instead of the old saturating ladder -- so sweeps stay precise
+        // and resonance can push all the way to a clean self-oscillation
+        // rather than softening into ladder-style compression.
+        const int filterType = (int) parameter (s, "FILTER_TYPE", 1.0f);
         const float noteTracking = std::pow (2.0f, ((float) note - 60.0f) / 12.0f * keyTrack);
         const float velocityTracking = 1.0f + (velocity - 0.5f) * velocityFilter * 1.5f;
+        // LFO -> cutoff (Serum-style filter wobble): up to +/-2 octaves at
+        // full LFO_FILTER depth, on the same LFO phase that drives vibrato,
+        // so one LFO section modulates both pitch and filter as in Serum's
+        // "drag an LFO onto the cutoff knob" workflow.
+        const float lfoToCutoffOct = std::sin (2.0f * pi * lfoPhase) * lfoFilterDepth * 2.0f;
         const float modCutoff = cutoff * noteTracking * velocityTracking
-                              * std::pow (2.0f, envAmount * filterEnv * 2.0f);
+                              * std::pow (2.0f, envAmount * filterEnv * 2.0f + lfoToCutoffOct);
         const float fc = juce::jlimit (30.0f, (float) sampleRate * 0.45f, modCutoff);
-        const float g = 1.0f - std::exp (-2.0f * pi * fc / (float) sampleRate);
-        const float feedback = resonance * 3.55f;
-        x = std::tanh (x * (1.0f + resonance * 1.5f + filterDrive * 2.5f));
-        const float inputL = x - filterL[3] * feedback;
-        const float inputR = x - filterR[3] * feedback;
-        for (int stage = 0; stage < 4; ++stage)
+        const float g = std::tan (pi * fc / (float) sampleRate);
+        // k = 1/Q: near 2 is barely resonant, near 0 rings and self-oscillates,
+        // matching the aggressive top-end resonance behaviour Serum's filters
+        // are known for.
+        const float k = juce::jmap (juce::jlimit (0.0f, 1.0f, resonance), 0.0f, 1.0f, 1.85f, 0.04f);
+
+        // Single drive stage ahead of the filter (rather than saturating every
+        // ladder stage) keeps the VCF itself clean/modern and puts all the
+        // grit under one clearly-labelled DRIVE control.
+        x = std::tanh (x * (1.0f + filterDrive * 3.0f));
+
+        SvfOutputs stage1L = processSvf (&filterL[0], x, g, k);
+        SvfOutputs stage1R = processSvf (&filterR[0], x, g, k);
+
+        float filteredL, filteredR;
+        switch (filterType)
         {
-            filterL[stage] += g * (stage == 0 ? inputL - filterL[stage] : filterL[stage - 1] - filterL[stage]);
-            filterR[stage] += g * (stage == 0 ? inputR - filterR[stage] : filterR[stage - 1] - filterR[stage]);
-            filterL[stage] = std::tanh (filterL[stage] * (1.0f + resonance * 0.08f));
-            filterR[stage] = std::tanh (filterR[stage] * (1.0f + resonance * 0.08f));
+            case 0: // LP 12 dB
+                filteredL = stage1L.lp; filteredR = stage1R.lp;
+                break;
+            case 1: // LP 24 dB: cascade a second lowpass stage (Serum's LP4)
+            {
+                SvfOutputs stage2L = processSvf (&filterL[2], stage1L.lp, g, k);
+                SvfOutputs stage2R = processSvf (&filterR[2], stage1R.lp, g, k);
+                filteredL = stage2L.lp; filteredR = stage2R.lp;
+                break;
+            }
+            case 2: // HP 12 dB
+                filteredL = stage1L.hp; filteredR = stage1R.hp;
+                break;
+            case 3: // BP 12 dB
+                filteredL = stage1L.bp; filteredR = stage1R.bp;
+                break;
+            default: // Notch 12 dB
+                filteredL = stage1L.notch; filteredR = stage1R.notch;
+                break;
         }
 
-        // Simple high-pass stage before the VCF output, mirroring the Juno's
+        // Simple high-pass stage after the VCF output, mirroring the Juno's
         // dedicated HPF rather than carving the bass out of the VCF itself.
         const float hpCoeff = std::exp (-2.0f * pi * hpFreq / (float) sampleRate);
-        hpStateL = hpCoeff * hpStateL + (1.0f - hpCoeff) * filterL[3];
-        const float outL = filterL[3] - hpStateL * hpf * 0.85f;
-        hpStateR = hpCoeff * hpStateR + (1.0f - hpCoeff) * filterR[3];
-        const float outR = filterR[3] - hpStateR * hpf * 0.85f;
+        hpStateL = hpCoeff * hpStateL + (1.0f - hpCoeff) * filteredL;
+        const float outL = filteredL - hpStateL * hpf * 0.85f;
+        hpStateR = hpCoeff * hpStateR + (1.0f - hpCoeff) * filteredR;
+        const float outR = filteredR - hpStateR * hpf * 0.85f;
 
         outputBuffer.addSample (0, startSample + i, outL * env * 0.72f);
         if (outputBuffer.getNumChannels() > 1)

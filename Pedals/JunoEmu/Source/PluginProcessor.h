@@ -67,7 +67,7 @@ private:
     float oscPulse (float phase, float phaseInc, float width) const noexcept;
     float oscTriangle (float phase) const noexcept;
     float oscSine (float phase) const noexcept;
-    float oscWavetable (float phase, float position, float warp) const noexcept;
+    float oscWavetable (float phase, float position) const noexcept;
     float oscForWave (int waveType, float phase, float phaseInc, float width) const noexcept;
     float polyBlep (float t, float dt) const noexcept;
     float nextNoise() noexcept;
@@ -80,6 +80,7 @@ private:
     // instead of needing a different filter structure per mode.
     struct SvfOutputs { float lp, bp, hp, notch; };
     SvfOutputs processSvf (float* state, float input, float g, float k) const noexcept;
+    float processJunoLadder (float* state, float input, float cutoff, float resonance) const noexcept;
 
     JunoEmuAudioProcessor& processor;
     double sampleRate = 44100.0;

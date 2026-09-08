@@ -169,6 +169,260 @@ namespace junoui
     };
 
     //--------------------------------------------------------------------
+    // Horizontal wave tabs. The oscillator waveform is a mode choice, not a
+    // column of permanently visible buttons; this keeps the synth compact
+    // and gives the oscillator area the modern, Serum-like workflow.
+    //--------------------------------------------------------------------
+    class WaveTabSelector final : public juce::Component
+    {
+    public:
+        WaveTabSelector (juce::AudioProcessorValueTreeState& state, juce::String paramID,
+                         juce::StringArray optionLabels, juce::Colour accentColour)
+            : apvts (state), id (std::move (paramID)), labels (std::move (optionLabels)), accent (accentColour)
+        {
+            for (int i = 0; i < labels.size(); ++i)
+            {
+                auto* button = buttons.add (new juce::TextButton (labels[i]));
+                button->setClickingTogglesState (false);
+                button->onClick = [this, i] { select (i); };
+                addAndMakeVisible (button);
+            }
+            refresh();
+        }
+
+        void refreshFromParameter()
+        {
+            if (auto* p = apvts.getParameter (id))
+            {
+                const int idx = juce::roundToInt (p->getValue() * (float) juce::jmax (1, labels.size() - 1));
+                if (idx != current) { current = idx; refresh(); }
+            }
+        }
+
+        void resized() override
+        {
+            auto area = getLocalBounds();
+            const int gap = 3;
+            const int n = juce::jmax (1, buttons.size());
+            const int w = (area.getWidth() - gap * (n - 1)) / n;
+            for (int i = 0; i < buttons.size(); ++i)
+                buttons[i]->setBounds (area.getX() + i * (w + gap), area.getY(), w, area.getHeight());
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 5.0f, 1.0f);
+        }
+
+    private:
+        void select (int index)
+        {
+            current = index;
+            if (auto* p = apvts.getParameter (id))
+                p->setValueNotifyingHost ((float) index / (float) juce::jmax (1, labels.size() - 1));
+            refresh();
+        }
+
+        void refresh()
+        {
+            for (int i = 0; i < buttons.size(); ++i)
+            {
+                auto* b = buttons[i];
+                b->setColour (juce::TextButton::buttonColourId,
+                              i == current ? accent.withAlpha (0.24f) : juce::Colour::fromRGB (16, 14, 12));
+                b->setColour (juce::TextButton::textColourOffId,
+                              i == current ? juce::Colours::white : juce::Colours::white.withAlpha (0.52f));
+                b->setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.30f));
+                b->setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+            }
+            repaint();
+        }
+
+        juce::AudioProcessorValueTreeState& apvts;
+        juce::String id;
+        juce::StringArray labels;
+        juce::Colour accent;
+        juce::OwnedArray<juce::TextButton> buttons;
+        int current = 0;
+    };
+
+    //--------------------------------------------------------------------
+    // A real drawable modulation source. Thirty-two editable points are
+    // stored as host parameters, so the curve survives presets, automation
+    // and DAW state recall. Two independent destinations turn one curve into
+    // a compact modulation source for cutoff, resonance, wavetable position,
+    // FM, PWM, oscillator pitch or VCA level.
+    //--------------------------------------------------------------------
+    class DrawableLfoPanel final : public juce::Component, private juce::Timer
+    {
+    public:
+        DrawableLfoPanel (juce::AudioProcessorValueTreeState& state, juce::Colour accentColour)
+            : apvts (state), accent (accentColour)
+        {
+            for (int i = 0; i < 32; ++i)
+                points.push_back ("LFO1_POINT_" + juce::String (i).paddedLeft ('0', 2));
+
+            configureCombo (destA, "LFO1_DEST_A");
+            configureCombo (destB, "LFO1_DEST_B");
+            configureAmount (amountA, "LFO1_AMT_A");
+            configureAmount (amountB, "LFO1_AMT_B");
+            configureRate (rate, "LFO_RATE");
+            configureAmount (smooth, "LFO1_SMOOTH");
+
+            addAndMakeVisible (destA);
+            addAndMakeVisible (destB);
+            addAndMakeVisible (amountA);
+            addAndMakeVisible (amountB);
+            addAndMakeVisible (rate);
+            addAndMakeVisible (smooth);
+            startTimerHz (15);
+        }
+
+        ~DrawableLfoPanel() override { stopTimer(); }
+
+        void paint (juce::Graphics& g) override
+        {
+            auto b = getLocalBounds().toFloat();
+            g.setColour (juce::Colour::fromRGB (22, 19, 16));
+            g.fillRoundedRectangle (b, 9.0f);
+            g.setColour (accent.withAlpha (0.30f));
+            g.drawRoundedRectangle (b.reduced (0.5f), 9.0f, 1.0f);
+
+            auto graph = graphBounds();
+            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            for (int i = 1; i < 4; ++i)
+            {
+                const float y = graph.getY() + graph.getHeight() * (float) i / 4.0f;
+                g.drawHorizontalLine ((int) y, graph.getX(), graph.getRight());
+            }
+            for (int i = 1; i < 8; ++i)
+            {
+                const float x = graph.getX() + graph.getWidth() * (float) i / 8.0f;
+                g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
+            }
+
+            juce::Path curve;
+            for (int i = 0; i < 128; ++i)
+            {
+                const float xNorm = (float) i / 127.0f;
+                const float value = sampleCurve (xNorm);
+                const float x = graph.getX() + xNorm * graph.getWidth();
+                const float y = graph.getBottom() - value * graph.getHeight();
+                if (i == 0) curve.startNewSubPath (x, y); else curve.lineTo (x, y);
+            }
+            g.setColour (accent);
+            g.strokePath (curve, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
+                                                        juce::PathStrokeType::rounded));
+
+            g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
+            g.setColour (juce::Colours::white.withAlpha (0.62f));
+            g.drawText ("DRAWN LFO", graph.getX() + 8, graph.getY() + 5, 90, 16, juce::Justification::left);
+            g.drawText ("drag to draw", graph.getRight() - 78, graph.getY() + 5, 70, 16, juce::Justification::right);
+        }
+
+        void mouseDown (const juce::MouseEvent& e) override { drawAt (e.position); }
+        void mouseDrag (const juce::MouseEvent& e) override { drawAt (e.position); }
+
+        void resized() override
+        {
+            auto area = getLocalBounds().reduced (8);
+            auto controls = area.removeFromBottom (42);
+            const int gap = 6;
+            const int w = (controls.getWidth() - gap * 5) / 6;
+            destA.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
+            amountA.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
+            destB.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
+            amountB.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
+            rate.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
+            smooth.setBounds (controls);
+        }
+
+    private:
+        juce::Rectangle<int> graphBounds() const
+        {
+            return getLocalBounds().reduced (8).withTrimmedBottom (50);
+        }
+
+        float raw (const juce::String& id, float fallback) const
+        {
+            if (auto* p = apvts.getRawParameterValue (id)) return p->load();
+            return fallback;
+        }
+
+        float sampleCurve (float x) const
+        {
+            const float pos = juce::jlimit (0.0f, 0.9999f, x) * 31.0f;
+            const int i = juce::jlimit (0, 30, (int) pos);
+            float t = pos - (float) i;
+            const float smoothing = raw ("LFO1_SMOOTH", 0.18f);
+            const float smoothT = t * t * (3.0f - 2.0f * t);
+            t = t * (1.0f - smoothing) + smoothT * smoothing;
+            const float a = raw (points[(size_t) i], (float) i / 31.0f);
+            const float b = raw (points[(size_t) i + 1], (float) (i + 1) / 31.0f);
+            return juce::jlimit (0.0f, 1.0f, a + (b - a) * t);
+        }
+
+        void drawAt (juce::Point<float> pos)
+        {
+            auto graph = graphBounds().toFloat();
+            if (! graph.contains (pos)) return;
+            const float x = juce::jlimit (0.0f, 0.9999f, (pos.x - graph.getX()) / graph.getWidth());
+            const float y = juce::jlimit (0.0f, 1.0f, 1.0f - (pos.y - graph.getY()) / graph.getHeight());
+            const int index = juce::jlimit (0, 31, juce::roundToInt (x * 31.0f));
+            if (auto* p = apvts.getParameter (points[(size_t) index]))
+                p->setValueNotifyingHost (y);
+            repaint();
+        }
+
+        void configureCombo (juce::ComboBox& box, const juce::String& id)
+        {
+            box.addItemList ({ "OFF", "CUTOFF", "RESONANCE", "WT POS", "FM", "PWM", "OSC2 PITCH", "OSC1 PITCH", "VCA" }, 1);
+            box.setTooltip ("Choose where the drawn LFO is routed");
+            if (auto* p = apvts.getParameter (id))
+                box.setSelectedId (juce::roundToInt (p->getValue() * 8.0f) + 1, juce::dontSendNotification);
+            box.onChange = [&box, this, id]
+            {
+                if (auto* p = apvts.getParameter (id))
+                    p->setValueNotifyingHost ((float) (box.getSelectedId() - 1) / 8.0f);
+            };
+        }
+
+        void configureAmount (juce::Slider& slider, const juce::String& id)
+        {
+            slider.setSliderStyle (juce::Slider::LinearHorizontal);
+            slider.setRange (-1.0, 1.0, 0.001);
+            slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
+            slider.setColour (juce::Slider::trackColourId, accent.withAlpha (0.30f));
+            slider.setColour (juce::Slider::thumbColourId, accent);
+            slider.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.75f));
+            slider.setScrollWheelEnabled (false);
+            if (auto* p = apvts.getParameter (id))
+                slider.setValue (p->convertFrom0to1 (p->getValue()), juce::dontSendNotification);
+            attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, id, slider));
+        }
+
+        void configureRate (juce::Slider& slider, const juce::String& id)
+        {
+            slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
+            slider.setScrollWheelEnabled (false);
+            if (auto* p = apvts.getParameter (id))
+                slider.setValue (p->convertFrom0to1 (p->getValue()), juce::dontSendNotification);
+            attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, id, slider));
+        }
+
+        void timerCallback() override { repaint(); }
+
+        juce::AudioProcessorValueTreeState& apvts;
+        juce::Colour accent;
+        std::vector<juce::String> points;
+        juce::ComboBox destA, destB;
+        juce::Slider amountA, amountB, rate, smooth;
+        std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
+    };
+
+    //--------------------------------------------------------------------
     // Bordered, titled group box that lays its children out as evenly
     // spaced columns (label on top, control filling the rest) -- the
     // "sections" a real Juno-106 panel is silkscreened into (DCO, VCF...).
@@ -213,7 +467,8 @@ namespace junoui
             for (auto& it : items)
             {
                 juce::Rectangle<int> col (x, b.getY(), colW, b.getHeight());
-                it.label->setBounds (col.removeFromTop (12));
+                if (it.label != nullptr)
+                    it.label->setBounds (col.removeFromTop (12));
                 it.control->setBounds (col.reduced (1, 0));
                 x += colW;
             }
@@ -346,7 +601,16 @@ namespace junoui
                 if (waveIndexF < 1.5f) return pulse;
                 if (waveIndexF < 2.5f) return 0.5f * (saw + pulse);
                 if (waveIndexF < 3.5f) return triangle;
-                return sine;
+                if (waveIndexF < 4.5f) return sine;
+
+                // Compact preview of the built-in modern wavetable. Keep the
+                // visualizer consistent with the DSP without duplicating a
+                // large table or adding any runtime allocation.
+                const float harmonic = 0.62f * sine
+                                      + 0.24f * std::sin (juce::MathConstants<float>::twoPi * 3.0f * ph)
+                                      + 0.14f * std::sin (juce::MathConstants<float>::twoPi * 5.0f * ph);
+                const float hollow = 0.72f * sine + 0.28f * std::sin (juce::MathConstants<float>::twoPi * 2.0f * ph);
+                return 0.5f * harmonic + 0.5f * hollow;
             }
             if (waveIndexF < 0.5f) return saw;
             if (waveIndexF < 1.5f) return pulse;
@@ -728,15 +992,18 @@ namespace junoui
 
             auto header = bounds.removeFromTop (46);
             bounds.removeFromTop (8);
-            auto visualRow = bounds.removeFromTop (110);
-            bounds.removeFromTop (8);
-            auto row1 = bounds.removeFromTop (168);
-            bounds.removeFromTop (8);
-            auto row2 = bounds.removeFromTop (120);
-            bounds.removeFromTop (8);
-            auto row3 = bounds.removeFromTop (108);
-            bounds.removeFromTop (6);
-            footerArea = bounds.removeFromTop (18);
+            auto visualRow = bounds.removeFromTop (104);
+            bounds.removeFromTop (7);
+            auto row1 = bounds.removeFromTop (166);
+            bounds.removeFromTop (7);
+            auto row2 = bounds.removeFromTop (132);
+            bounds.removeFromTop (7);
+            // The modern section is deliberately allowed to consume the
+            // remaining height. The previous fixed 108 px row left a large
+            // unused rectangle underneath the synth at the default size.
+            auto row3 = bounds.removeFromTop (juce::jmax (120, bounds.getHeight() - 26));
+            bounds.removeFromTop (5);
+            footerArea = bounds.removeFromBottom (18);
 
             // Header: title | preset selector | brand
             title.setBounds (header.removeFromLeft (200));
@@ -779,7 +1046,13 @@ namespace junoui
             row2.removeFromLeft (gap);
             fxPanel->setBounds (row2);
 
-            // Row 3: modern extras, one wide panel
+            // Row 3: the modern controls and the new free-form modulation
+            // editor share the remaining space. Nothing is left as a blank
+            // decorative rectangle.
+            const int row3Gap = 8;
+            const int modW = juce::jlimit (620, 820, (int) (row3.getWidth() * 0.64f));
+            modulationPanel->setBounds (row3.removeFromLeft (modW));
+            row3.removeFromLeft (row3Gap);
             modernPanel->setBounds (row3);
         }
 
@@ -795,6 +1068,8 @@ namespace junoui
         {
             for (auto& s : selectors)
                 s->refreshFromParameter();
+            for (auto& s : waveTabs)
+                s->refreshFromParameter();
         }
 
         void buildHeader()
@@ -804,7 +1079,7 @@ namespace junoui
             title.setColour (juce::Label::textColourId, juce::Colours::white);
             addAndMakeVisible (title);
 
-            brand.setText ("DEVKOMODO  -  DCO CLASSIC  -  MODERN EDITION", juce::dontSendNotification);
+            brand.setText ("DEVKOMODO  -  ANALOG / MODERN HYBRID", juce::dontSendNotification);
             brand.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
             brand.setColour (juce::Label::textColourId, juce::Colours::white.interpolatedWith (accent, 0.55f));
             brand.setJustificationType (juce::Justification::centredRight);
@@ -830,7 +1105,7 @@ namespace junoui
         {
             dcoPanel = std::make_unique<PanelSection> ("DCO", accent);
             addAndMakeVisible (*dcoPanel);
-            addSelector (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE", "WT" }, "WAVE");
+            addWaveTabs (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE", "WT" });
             addClassicSlider (*dcoPanel, "PULSE", "PW");
             addClassicSlider (*dcoPanel, "PWM_RATE", "PWM RT");
             addClassicSlider (*dcoPanel, "PWM_DEPTH", "PWM DEP");
@@ -838,13 +1113,12 @@ namespace junoui
             addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
             addClassicSlider (*dcoPanel, "WT_POS", "WT POS");
-            addClassicSlider (*dcoPanel, "WT_WARP", "WT WARP");
-            addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
+                        addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
             addClassicSlider (*dcoPanel, "HYBRID", "HYBRID");
 
             osc2Panel = std::make_unique<PanelSection> ("OSC 2", accent);
             addAndMakeVisible (*osc2Panel);
-            addSelector (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE", "WT" }, "WAVE");
+            addWaveTabs (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE", "WT" });
             addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
             addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
             addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
@@ -855,7 +1129,7 @@ namespace junoui
             addAndMakeVisible (*vcfPanel);
             addClassicSlider (*vcfPanel, "HPF", "HPF");
             addClassicSlider (*vcfPanel, "CUTOFF", "CUTOFF");
-            addSelector (*vcfPanel, "FILTER_TYPE", { "LP12", "LP24", "HP12", "BP12", "NOTCH" }, "TYPE");
+            addSelector (*vcfPanel, "FILTER_TYPE", { "JUNO LP24", "LP12", "HP12", "BP12", "NOTCH" }, "TYPE");
             addClassicSlider (*vcfPanel, "RESONANCE", "RESO");
             addClassicSlider (*vcfPanel, "ENV_AMOUNT", "ENV AMT");
             addClassicSlider (*vcfPanel, "KEYTRACK", "KEY TRK");
@@ -864,7 +1138,6 @@ namespace junoui
 
             lfoPanel = std::make_unique<PanelSection> ("LFO", accent);
             addAndMakeVisible (*lfoPanel);
-            addClassicSlider (*lfoPanel, "LFO_RATE", "RATE");
             addClassicSlider (*lfoPanel, "LFO_DEPTH", "VIBRATO");
             addClassicSlider (*lfoPanel, "LFO_FILTER", "VCF LFO");
             addClassicSlider (*lfoPanel, "LFO2_RATE", "LFO2 RT");
@@ -883,6 +1156,7 @@ namespace junoui
             addClassicSlider (*fenvPanel, "FILTER_ATTACK", "F.ATK");
             addClassicSlider (*fenvPanel, "FILTER_DECAY", "F.DEC");
             addClassicSlider (*fenvPanel, "FILTER_SUSTAIN", "F.SUS");
+            addClassicSlider (*fenvPanel, "FILTER_RELEASE", "F.REL");
             addClassicSlider (*fenvPanel, "MODENV_ATTACK", "M.ATK");
             addClassicSlider (*fenvPanel, "MODENV_DECAY", "M.DEC");
             addClassicSlider (*fenvPanel, "MODENV_AMOUNT", "M.AMT");
@@ -899,8 +1173,8 @@ namespace junoui
         {
             modernPanel = std::make_unique<PanelSection> ("MODERN EXTRAS", accent);
             addAndMakeVisible (*modernPanel);
-            addModernKnob (*modernPanel, "UNISON", "UNISON");
             addModernKnob (*modernPanel, "HYBRID", "A/D MIX");
+            addModernKnob (*modernPanel, "UNISON", "UNISON");
             addModernKnob (*modernPanel, "DETUNE", "DETUNE");
             addModernKnob (*modernPanel, "DRIFT", "DRIFT");
             addModernKnob (*modernPanel, "DELAY_TIME", "DLY TIME");
@@ -910,6 +1184,9 @@ namespace junoui
             addModernKnob (*modernPanel, "WIDTH", "WIDTH");
             addModernKnob (*modernPanel, "DRIVE", "DRIVE");
             addModernKnob (*modernPanel, "LEVEL", "LEVEL");
+
+            modulationPanel = std::make_unique<DrawableLfoPanel> (apvts, accent);
+            addAndMakeVisible (*modulationPanel);
         }
 
         void addClassicSlider (PanelSection& section, const juce::String& id, const juce::String& shortLabel)
@@ -964,6 +1241,14 @@ namespace junoui
             modernSliders.push_back (std::move (c));
         }
 
+        void addWaveTabs (PanelSection& section, const juce::String& id, juce::StringArray labels)
+        {
+            auto selector = std::make_unique<WaveTabSelector> (apvts, id, std::move (labels), accent);
+            section.addAndMakeVisible (*selector);
+            section.addItem (nullptr, selector.get());
+            waveTabs.push_back (std::move (selector));
+        }
+
         void addSelector (PanelSection& section, const juce::String& id, juce::StringArray labels, const juce::String& captionText)
         {
             auto label = std::make_unique<juce::Label>();
@@ -1007,10 +1292,12 @@ namespace junoui
         std::unique_ptr<FilterCurveView> filterView;
 
         std::unique_ptr<PanelSection> dcoPanel, osc2Panel, vcfPanel, lfoPanel, envPanel, fenvPanel, fxPanel, modernPanel;
+        std::unique_ptr<DrawableLfoPanel> modulationPanel;
 
         std::vector<SliderCtrl> classicSliders, modernSliders;
         std::vector<std::unique_ptr<juce::Label>> selectorLabels;
         std::vector<std::unique_ptr<ChoiceSelector>> selectors;
+        std::vector<std::unique_ptr<WaveTabSelector>> waveTabs;
 
         juce::Rectangle<int> footerArea;
 

@@ -1,10 +1,46 @@
 #include "PluginProcessor.h"
 #include "JunoUI.h"
 #include "../../Common/TempoSync.h"
+#include <array>
 
 namespace
 {
 constexpr float pi = juce::MathConstants<float>::pi;
+constexpr std::array<const char*, 32> curvePointIds
+{
+    "LFO1_POINT_00",
+    "LFO1_POINT_01",
+    "LFO1_POINT_02",
+    "LFO1_POINT_03",
+    "LFO1_POINT_04",
+    "LFO1_POINT_05",
+    "LFO1_POINT_06",
+    "LFO1_POINT_07",
+    "LFO1_POINT_08",
+    "LFO1_POINT_09",
+    "LFO1_POINT_10",
+    "LFO1_POINT_11",
+    "LFO1_POINT_12",
+    "LFO1_POINT_13",
+    "LFO1_POINT_14",
+    "LFO1_POINT_15",
+    "LFO1_POINT_16",
+    "LFO1_POINT_17",
+    "LFO1_POINT_18",
+    "LFO1_POINT_19",
+    "LFO1_POINT_20",
+    "LFO1_POINT_21",
+    "LFO1_POINT_22",
+    "LFO1_POINT_23",
+    "LFO1_POINT_24",
+    "LFO1_POINT_25",
+    "LFO1_POINT_26",
+    "LFO1_POINT_27",
+    "LFO1_POINT_28",
+    "LFO1_POINT_29",
+    "LFO1_POINT_30",
+    "LFO1_POINT_31"
+};
 
 float parameter (juce::AudioProcessorValueTreeState& state, const char* id, float fallback = 0.0f)
 {
@@ -70,18 +106,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("LFO2_RATE", "LFO 2 Rate", 0.05f, 20.0f, 1.2f);
     f ("LFO2_DEPTH", "LFO 2 Depth", 0.0f, 1.0f, 0.0f);
     f ("LFO2_PITCH", "LFO 2 Pitch", 0.0f, 1.0f, 0.0f);
-    // Free-form modulation source. The 32 breakpoints are deliberately
-    // parameterised so the curve is fully automatable/savable by the host.
-    // The UI draws between these points, while the voice interpolates them
-    // once per block. This gives Serum/Vital-style drawable modulation
-    // without allocations or a heavyweight modulation engine.
+    // Backing storage for the drawable Mod Shape. The editor can expose a
+    // smaller working resolution (4/8/16/32) without changing the existing
+    // parameter IDs, so old presets remain loadable.
     for (int i = 0; i < 32; ++i)
     {
-        const auto id = "LFO1_POINT_" + juce::String (i).paddedLeft ('0', 2);
+        const auto id = curvePointIds[(size_t) i];
         const float initial = 0.5f + 0.5f * std::sin (juce::MathConstants<float>::twoPi * (float) i / 31.0f);
         const auto name = "LFO Curve " + juce::String (i + 1);
-        f (id.toRawUTF8(), name.toRawUTF8(), 0.0f, 1.0f, initial);
+        f (id, name.toRawUTF8(), 0.0f, 1.0f, initial);
     }
+    choice ("LFO1_POINT_COUNT", "Mod Shape Points", { "4", "8", "16", "32" }, 1);
     // Lets LFO_RATE -- the rate knob on the FILTER / MOD SHAPE panel --
     // lock to the host tempo instead of running free in Hz.
     DevKomodoTempoSync::addParameters (p, 4 /* "1/4" */);
@@ -141,8 +176,6 @@ JunoEmuAudioProcessor::~JunoEmuAudioProcessor() = default;
 
 void JunoEmuAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    currentSampleRate = sampleRate;
-    lastBlockSize = samplesPerBlock;
     synth.setCurrentPlaybackSampleRate (sampleRate);
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
@@ -559,11 +592,15 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const int curveDestB = (int) parameter (s, "LFO1_DEST_B", 0.0f);
     const float curveAmountB = parameter (s, "LFO1_AMT_B", 0.0f);
     const float curveSmooth = parameter (s, "LFO1_SMOOTH", 0.18f);
+    static constexpr int pointCounts[] { 4, 8, 16, 32 };
+    const int pointCountIndex = juce::jlimit (0, 3, juce::roundToInt (parameter (s, "LFO1_POINT_COUNT", 0.333333f) * 3.0f));
+    const int activePointCount = pointCounts[pointCountIndex];
     float curvePoints[32] {};
-    for (int p = 0; p < 32; ++p)
+    for (int p = 0; p < activePointCount; ++p)
     {
-        const auto id = "LFO1_POINT_" + juce::String (p).paddedLeft ('0', 2);
-        curvePoints[p] = parameter (s, id.toRawUTF8(), (float) p / 31.0f);
+        const int sourceIndex = (int) std::round ((double) p * 31.0 / (double) (activePointCount - 1));
+        curvePoints[p] = parameter (s, curvePointIds[(size_t) sourceIndex],
+                                    (float) p / (float) (activePointCount - 1));
     }
     const float glideCoeff = std::exp (-1.0f / (glide * (float) sampleRate));
     const float hpFreq = juce::jmap (hpf, 20.0f, 700.0f);
@@ -609,13 +646,13 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
             driftValue = juce::jlimit (-1.0f, 1.0f, driftValue);
         }
 
-        // Drawn LFO: interpolate the 32 user breakpoints. The curve is
+        // Drawn LFO: interpolate only the selected working breakpoints.
         // intentionally bipolar around its centre so the same shape can be
         // used for positive or negative modulation amounts, just like a
         // modulation source in a modern wavetable synth.
-        const float curvePosition = std::fmod (lfoPhase * 32.0f, 32.0f);
-        const int curveIndex = juce::jlimit (0, 31, (int) curvePosition);
-        const int curveNext = (curveIndex + 1) & 31;
+        const float curvePosition = std::fmod (lfoPhase * (float) activePointCount, (float) activePointCount);
+        const int curveIndex = juce::jlimit (0, activePointCount - 1, (int) curvePosition);
+        const int curveNext = (curveIndex + 1) % activePointCount;
         float curveT = curvePosition - (float) curveIndex;
         curveT = curveT * curveT * (3.0f - 2.0f * curveT) * curveSmooth
                + curveT * (1.0f - curveSmooth);

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <functional>
 #include <utility>
+#include <array>
 
 // ============================================================================
 // Bespoke "hardware panel" editor for Juno Emu.
@@ -273,9 +274,10 @@ namespace junoui
     };
 
     //--------------------------------------------------------------------
-    // A real drawable modulation source. Thirty-two editable points are
-    // stored as host parameters, so the curve survives presets, automation
-    // and DAW state recall. Two independent destinations turn one curve into
+    // Drawable modulation source. Up to 32 host-automatable points are kept
+    // for preset/state compatibility, while the editor exposes a selectable
+    // working resolution (4 / 8 / 16 / 32 points) so the grid stays compact.
+    // Two independent destinations turn one curve into
     // a compact modulation source for cutoff, resonance, wavetable position,
     // FM, PWM, oscillator pitch or VCA level.
     //--------------------------------------------------------------------
@@ -285,8 +287,8 @@ namespace junoui
         DrawableLfoPanel (juce::AudioProcessorValueTreeState& state, juce::Colour accentColour)
             : apvts (state), accent (accentColour)
         {
-            for (int i = 0; i < 32; ++i)
-                points.push_back ("LFO1_POINT_" + juce::String (i).paddedLeft ('0', 2));
+            for (int i = 0; i < maxPoints; ++i)
+                points[(size_t) i] = "LFO1_POINT_" + juce::String (i).paddedLeft ('0', 2);
 
             configureCombo (destA, "LFO1_DEST_A");
             configureCombo (destB, "LFO1_DEST_B");
@@ -294,6 +296,7 @@ namespace junoui
             configureAmount (amountB, "LFO1_AMT_B");
             configureRate (rate, "LFO_RATE");
             configureAmount (smooth, "LFO1_SMOOTH");
+            configurePointCount();
 
             addAndMakeVisible (destA);
             addAndMakeVisible (destB);
@@ -301,6 +304,7 @@ namespace junoui
             addAndMakeVisible (amountB);
             addAndMakeVisible (rate);
             addAndMakeVisible (smooth);
+            addAndMakeVisible (pointCount);
 
             // Every control here used to have no caption at all -- fine for
             // a knob whose name is printed on hardware silkscreen, not for a
@@ -311,6 +315,7 @@ namespace junoui
             makeLabel (amountBLabel, "AMT B");
             makeLabel (rateLabel, "RATE");
             makeLabel (smoothLabel, "SMOOTH");
+            makeLabel (pointCountLabel, "POINTS");
 
             // BPM sync for the Mod Shape rate: when engaged, LFO_RATE is
             // ignored and the curve instead advances in lock-step with the
@@ -359,20 +364,21 @@ namespace junoui
 
             auto graph = graphBounds();
 
-            // Serum-style shaper grid: one column per breakpoint (32 of
-            // them) rather than a handful of decorative guide lines, so the
-            // grid itself communicates how many discrete points there are
-            // and where each one sits, the way Serum's LFO/noise editors do.
-            g.setColour (juce::Colours::white.withAlpha (0.045f));
-            for (int i = 1; i < (int) points.size(); ++i)
+            // Compact shaper grid: only the active breakpoints become major
+            // columns. This keeps 4/8 point shapes readable instead of filling
+            // the editor with 32 tiny guides.
+            const int activePoints = getActivePointCount();
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            for (int i = 0; i < activePoints; ++i)
             {
-                const float x = graph.getX() + graph.getWidth() * (float) i / (float) points.size();
+                const float xNorm = (float) i / (float) (activePoints - 1);
+                const float x = graph.getX() + xNorm * graph.getWidth();
                 g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
             }
-            g.setColour (juce::Colours::white.withAlpha (0.09f));
-            for (int i = 1; i < (int) points.size(); i += 4)
+            g.setColour (juce::Colours::white.withAlpha (0.035f));
+            for (int i = 1; i < activePoints - 1; ++i)
             {
-                const float x = graph.getX() + graph.getWidth() * (float) i / (float) points.size();
+                const float x = graph.getX() + graph.getWidth() * (float) i / (float) (activePoints - 1);
                 g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
             }
             for (int i = 1; i < 4; ++i)
@@ -396,13 +402,12 @@ namespace junoui
             g.strokePath (curve, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
                                                         juce::PathStrokeType::rounded));
 
-            // The actual host-automatable breakpoints, drawn as filled dots
-            // on top of the interpolated curve -- this is what makes it
-            // read as "click points on a grid" rather than a freehand line.
-            for (size_t i = 0; i < points.size(); ++i)
+            // Draw only the selected working points. The unused backing
+            // parameters remain hidden so presets/automation stay compatible.
+            for (int i = 0; i < activePoints; ++i)
             {
-                const float xNorm = (float) i / (float) (points.size() - 1);
-                const float value = raw (points[i], xNorm);
+                const float xNorm = (float) i / (float) (activePoints - 1);
+                const float value = raw (pointIdForSlot (i, activePoints), xNorm);
                 const float x = graph.getX() + xNorm * graph.getWidth();
                 const float y = graph.getBottom() - value * graph.getHeight();
                 const float r = 3.4f;
@@ -429,7 +434,7 @@ namespace junoui
             auto controls = area.removeFromBottom (42);
             auto labels = area.removeFromBottom (12);
             const int gap = 6;
-            const int w = (controls.getWidth() - gap * 5) / 6;
+            const int w = (controls.getWidth() - gap * 6) / 7;
 
             auto placeColumn = [&] (juce::Rectangle<int> labelArea, juce::Rectangle<int> controlArea,
                                      juce::Label& label, juce::Component& control)
@@ -452,7 +457,10 @@ namespace junoui
             labels.removeFromLeft (gap); controls.removeFromLeft (gap);
             placeColumn (rateLabelArea, rateControlArea, rateLabel, rate);
 
-            placeColumn (labels, controls, smoothLabel, smooth);
+            placeColumn (labels.removeFromLeft (w), controls.removeFromLeft (w), smoothLabel, smooth);
+            labels.removeFromLeft (gap);
+            controls.removeFromLeft (gap);
+            placeColumn (labels, controls, pointCountLabel, pointCount);
 
             // Sync row sits only under the RATE column -- SYNC toggle and
             // note-division combo, since they're specifically what makes
@@ -478,16 +486,34 @@ namespace junoui
             return fallback;
         }
 
+        int getActivePointCount() const
+        {
+            static constexpr int pointCounts[] { 4, 8, 16, 32 };
+            if (auto* p = apvts.getRawParameterValue ("LFO1_POINT_COUNT"))
+            {
+                const int index = juce::jlimit (0, 3, juce::roundToInt (p->load() * 3.0f));
+                return pointCounts[index];
+            }
+            return 8;
+        }
+
+        const juce::String& pointIdForSlot (int slot, int activeCount) const
+        {
+            const int sourceIndex = (int) std::round ((double) slot * (maxPoints - 1) / (double) (activeCount - 1));
+            return points[(size_t) juce::jlimit (0, maxPoints - 1, sourceIndex)];
+        }
+
         float sampleCurve (float x) const
         {
-            const float pos = juce::jlimit (0.0f, 0.9999f, x) * 31.0f;
-            const int i = juce::jlimit (0, 30, (int) pos);
+            const int activeCount = getActivePointCount();
+            const float pos = juce::jlimit (0.0f, 0.9999f, x) * (float) (activeCount - 1);
+            const int i = juce::jlimit (0, activeCount - 2, (int) pos);
             float t = pos - (float) i;
             const float smoothing = raw ("LFO1_SMOOTH", 0.18f);
             const float smoothT = t * t * (3.0f - 2.0f * t);
             t = t * (1.0f - smoothing) + smoothT * smoothing;
-            const float a = raw (points[(size_t) i], (float) i / 31.0f);
-            const float b = raw (points[(size_t) i + 1], (float) (i + 1) / 31.0f);
+            const float a = raw (pointIdForSlot (i, activeCount), (float) i / (float) (activeCount - 1));
+            const float b = raw (pointIdForSlot (i + 1, activeCount), (float) (i + 1) / (float) (activeCount - 1));
             return juce::jlimit (0.0f, 1.0f, a + (b - a) * t);
         }
 
@@ -497,10 +523,28 @@ namespace junoui
             if (! graph.contains (pos)) return;
             const float x = juce::jlimit (0.0f, 0.9999f, (pos.x - graph.getX()) / graph.getWidth());
             const float y = juce::jlimit (0.0f, 1.0f, 1.0f - (pos.y - graph.getY()) / graph.getHeight());
-            const int index = juce::jlimit (0, 31, juce::roundToInt (x * 31.0f));
-            if (auto* p = apvts.getParameter (points[(size_t) index]))
+            const int activeCount = getActivePointCount();
+            const int slot = juce::jlimit (0, activeCount - 1, juce::roundToInt (x * (float) (activeCount - 1)));
+            if (auto* p = apvts.getParameter (pointIdForSlot (slot, activeCount)))
                 p->setValueNotifyingHost (y);
             repaint();
+        }
+
+        void configurePointCount()
+        {
+            pointCount.addItem ("4", 1);
+            pointCount.addItem ("8", 2);
+            pointCount.addItem ("16", 3);
+            pointCount.addItem ("32", 4);
+            pointCount.setTooltip ("Number of editable points in the Mod Shape grid");
+            if (auto* p = apvts.getParameter ("LFO1_POINT_COUNT"))
+                pointCount.setSelectedId (juce::jlimit (1, 4, juce::roundToInt (p->getValue() * 3.0f) + 1), juce::dontSendNotification);
+            pointCount.onChange = [this]
+            {
+                if (auto* p = apvts.getParameter ("LFO1_POINT_COUNT"))
+                    p->setValueNotifyingHost ((float) (pointCount.getSelectedId() - 1) / 3.0f);
+                repaint();
+            };
         }
 
         void configureCombo (juce::ComboBox& box, const juce::String& id)
@@ -561,15 +605,23 @@ namespace junoui
                     noteDiv.setEnabled (synced);
                 }
             }
+
+            if (auto* p = apvts.getRawParameterValue ("LFO1_POINT_COUNT"))
+            {
+                const int id = juce::jlimit (1, 4, juce::roundToInt (p->load() * 3.0f) + 1);
+                if (pointCount.getSelectedId() != id)
+                    pointCount.setSelectedId (id, juce::dontSendNotification);
+            }
             repaint();
         }
 
         juce::AudioProcessorValueTreeState& apvts;
         juce::Colour accent;
-        std::vector<juce::String> points;
-        juce::ComboBox destA, destB;
+        static constexpr int maxPoints = 32;
+        std::array<juce::String, maxPoints> points {};
+        juce::ComboBox destA, destB, pointCount;
         juce::Slider amountA, amountB, rate, smooth;
-        juce::Label destALabel, amountALabel, destBLabel, amountBLabel, rateLabel, smoothLabel;
+        juce::Label destALabel, amountALabel, destBLabel, amountBLabel, rateLabel, smoothLabel, pointCountLabel;
         juce::TextButton syncButton;
         juce::ComboBox noteDiv;
         std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;

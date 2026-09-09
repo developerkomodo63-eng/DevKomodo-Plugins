@@ -44,8 +44,6 @@ private:
     juce::dsp::Reverb reverb;
     juce::AudioBuffer<float> delayBuffer;
     int delayWritePosition = 0;
-    double currentSampleRate = 44100.0;
-    int lastBlockSize = 512;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JunoEmuAudioProcessor)
 };

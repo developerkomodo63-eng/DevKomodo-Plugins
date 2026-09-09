@@ -290,17 +290,30 @@ namespace junoui
             g.drawRoundedRectangle (b.reduced (0.5f), 9.0f, 1.0f);
 
             auto graph = graphBounds();
-            g.setColour (juce::Colours::white.withAlpha (0.04f));
+
+            // Serum-style shaper grid: one column per breakpoint (32 of
+            // them) rather than a handful of decorative guide lines, so the
+            // grid itself communicates how many discrete points there are
+            // and where each one sits, the way Serum's LFO/noise editors do.
+            g.setColour (juce::Colours::white.withAlpha (0.045f));
+            for (int i = 1; i < (int) points.size(); ++i)
+            {
+                const float x = graph.getX() + graph.getWidth() * (float) i / (float) points.size();
+                g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
+            }
+            g.setColour (juce::Colours::white.withAlpha (0.09f));
+            for (int i = 1; i < (int) points.size(); i += 4)
+            {
+                const float x = graph.getX() + graph.getWidth() * (float) i / (float) points.size();
+                g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
+            }
             for (int i = 1; i < 4; ++i)
             {
                 const float y = graph.getY() + graph.getHeight() * (float) i / 4.0f;
                 g.drawHorizontalLine ((int) y, graph.getX(), graph.getRight());
             }
-            for (int i = 1; i < 8; ++i)
-            {
-                const float x = graph.getX() + graph.getWidth() * (float) i / 8.0f;
-                g.drawVerticalLine ((int) x, graph.getY(), graph.getBottom());
-            }
+            g.setColour (juce::Colours::white.withAlpha (0.16f));
+            g.drawHorizontalLine ((int) (graph.getY() + graph.getHeight() * 0.5f), graph.getX(), graph.getRight());
 
             juce::Path curve;
             for (int i = 0; i < 128; ++i)
@@ -315,10 +328,27 @@ namespace junoui
             g.strokePath (curve, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
                                                         juce::PathStrokeType::rounded));
 
+            // The actual host-automatable breakpoints, drawn as filled dots
+            // on top of the interpolated curve -- this is what makes it
+            // read as "click points on a grid" rather than a freehand line.
+            for (size_t i = 0; i < points.size(); ++i)
+            {
+                const float xNorm = (float) i / (float) (points.size() - 1);
+                const float value = raw (points[i], xNorm);
+                const float x = graph.getX() + xNorm * graph.getWidth();
+                const float y = graph.getBottom() - value * graph.getHeight();
+                const float r = 3.4f;
+                g.setColour (juce::Colour::fromRGB (10, 9, 8));
+                g.fillEllipse (x - r, y - r, r * 2.0f, r * 2.0f);
+                g.setColour (juce::Colours::white.withAlpha (0.92f));
+                g.drawEllipse (x - r, y - r, r * 2.0f, r * 2.0f, 1.3f);
+            }
+
             g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
             g.setColour (juce::Colours::white.withAlpha (0.62f));
-            g.drawText ("DRAWN LFO", graph.getX() + 8, graph.getY() + 5, 90, 16, juce::Justification::left);
-            g.drawText ("drag to draw", graph.getRight() - 78, graph.getY() + 5, 70, 16, juce::Justification::right);
+            g.drawText ("FILTER / MOD SHAPE", graph.getX() + 8, graph.getY() + 5, 130, 16, juce::Justification::left);
+            g.drawText ("click a point, drag to shape", graph.getRight() - 150, graph.getY() + 5, 142, 16,
+                        juce::Justification::right);
         }
 
         void mouseDown (const juce::MouseEvent& e) override { drawAt (e.position); }
@@ -918,23 +948,36 @@ namespace junoui
     }
 
     //====================================================================
-    // Main editor.
+    // Main editor content. This holds the entire hand-built UI at a single
+    // fixed "native" resolution (baseWidth x baseHeight). It is wrapped by
+    // JunoEmuEditor (below), which is the actual AudioProcessorEditor and
+    // is responsible only for picking a UI size (100% / 75% / 50%) and
+    // applying it as a transform on this component -- so every control,
+    // knob and the drawable filter grid all scale together with correct
+    // mouse-position mapping (JUCE remaps mouse events through a
+    // Component's transform automatically), instead of needing a second,
+    // separately-laid-out UI per size.
     //====================================================================
-    class JunoEmuEditor final : public juce::AudioProcessorEditor, private juce::Timer
+    class JunoEmuEditorContent final : public juce::Component, private juce::Timer
     {
     public:
-        JunoEmuEditor (juce::AudioProcessor& processor, juce::AudioProcessorValueTreeState& state)
-            : AudioProcessorEditor (&processor), apvts (state),
+        static constexpr int baseWidth = 1320;
+        static constexpr int baseHeight = 760;
+
+        std::function<void (float)> onSizeChanged;
+
+        explicit JunoEmuEditorContent (juce::AudioProcessorValueTreeState& state)
+            : apvts (state),
               sliderLnf (accent), modernLnf (accent),
               tooltipWindow (this, 600)
         {
             setOpaque (true);
 
-            // Build every child component FIRST. setResizeLimits()/setSize()
-            // below trigger an immediate synchronous resized() call as part
-            // of applying the new bounds -- if that fires before waveScope
-            // and the panels exist, resized() dereferences null unique_ptrs.
-            // (Caught via ASan: "member access within null pointer of type
+            // Build every child component FIRST. setSize() below triggers an
+            // immediate synchronous resized() call as part of applying the
+            // new bounds -- if that fires before waveScope and the panels
+            // exist, resized() dereferences null unique_ptrs. (Caught via
+            // ASan: "member access within null pointer of type
             // WaveScopeDisplay" -- this was the FL Studio load crash.)
             buildHeader();
             buildVisualizers();
@@ -947,16 +990,15 @@ namespace junoui
             presetBox.setSelectedId (1, juce::dontSendNotification);
             presetBox.onChange = [this] { applySelectedPreset(); };
 
-            setResizable (true, true);
-            setResizeLimits (1120, 700, 1700, 1000);
-            setSize (1320, 760);
+            setSize (baseWidth, baseHeight);
             startTimerHz (15);
         }
 
-        ~JunoEmuEditor() override
+        ~JunoEmuEditorContent() override
         {
             stopTimer();
             presetBox.setLookAndFeel (nullptr);
+            sizeBox.setLookAndFeel (nullptr);
             for (auto& c : classicSliders) c.slider->setLookAndFeel (nullptr);
             for (auto& c : modernSliders) c.slider->setLookAndFeel (nullptr);
         }
@@ -1005,9 +1047,11 @@ namespace junoui
             bounds.removeFromTop (5);
             footerArea = bounds.removeFromBottom (18);
 
-            // Header: title | preset selector | brand
+            // Header: title | preset selector | size selector | brand
             title.setBounds (header.removeFromLeft (200));
             brand.setBounds (header.removeFromRight (juce::jmin (300, header.getWidth() / 2)));
+            sizeBox.setBounds (header.removeFromRight (96).reduced (6, 6));
+            header.removeFromRight (6);
             presetBox.setBounds (header.reduced (6, 6));
 
             // Visualizers: scope | envelope | filter response
@@ -1089,6 +1133,26 @@ namespace junoui
             presetBox.setLookAndFeel (&modernLnf);
             presetBox.setTooltip ("Load a factory preset (still fully editable afterwards)");
             addAndMakeVisible (presetBox);
+
+            // UI size presets. The whole editor is built at one native
+            // resolution and scaled as a unit (see JunoEmuEditor), so this
+            // never has to re-run the layout -- it just picks how big that
+            // fixed layout is drawn.
+            sizeBox.addItem ("SIZE 100%", 1);
+            sizeBox.addItem ("SIZE 75%", 2);
+            sizeBox.addItem ("SIZE 50%", 3);
+            sizeBox.setSelectedId (1, juce::dontSendNotification);
+            sizeBox.setLookAndFeel (&modernLnf);
+            sizeBox.setTooltip ("Scale the whole plugin window down for small screens");
+            sizeBox.onChange = [this]
+            {
+                const float scale = sizeBox.getSelectedId() == 2 ? 0.75f
+                                   : sizeBox.getSelectedId() == 3 ? 0.50f
+                                                                   : 1.0f;
+                if (onSizeChanged)
+                    onSizeChanged (scale);
+            };
+            addAndMakeVisible (sizeBox);
         }
 
         void buildVisualizers()
@@ -1285,6 +1349,7 @@ namespace junoui
 
         juce::Label title, brand;
         juce::ComboBox presetBox;
+        juce::ComboBox sizeBox;
         std::vector<JunoPreset> presets;
 
         std::unique_ptr<WaveScopeDisplay> waveScope;
@@ -1300,6 +1365,52 @@ namespace junoui
         std::vector<std::unique_ptr<WaveTabSelector>> waveTabs;
 
         juce::Rectangle<int> footerArea;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JunoEmuEditorContent)
+    };
+
+    //====================================================================
+    // Thin AudioProcessorEditor wrapper. It owns the fixed-resolution
+    // JunoEmuEditorContent and, when the SIZE selector fires, scales that
+    // content as a whole with an AffineTransform and resizes the actual
+    // plugin window to match -- so 75%/50% are pixel-perfect shrinks of
+    // the 100% layout rather than a second layout to maintain.
+    //====================================================================
+    class JunoEmuEditor final : public juce::AudioProcessorEditor
+    {
+    public:
+        JunoEmuEditor (juce::AudioProcessor& processor, juce::AudioProcessorValueTreeState& state)
+            : AudioProcessorEditor (&processor)
+        {
+            setOpaque (true);
+            content = std::make_unique<JunoEmuEditorContent> (state);
+            content->onSizeChanged = [this] (float scale) { applyScale (scale); };
+            addAndMakeVisible (*content);
+
+            setResizable (false, false);
+            setSize (JunoEmuEditorContent::baseWidth, JunoEmuEditorContent::baseHeight);
+        }
+
+        void paint (juce::Graphics&) override {}
+
+        void resized() override
+        {
+            // content keeps its native size always; only its transform
+            // (applied in applyScale) changes how big it looks on screen.
+            content->setTopLeftPosition (0, 0);
+        }
+
+    private:
+        void applyScale (float scale)
+        {
+            currentScale = scale;
+            content->setTransform (juce::AffineTransform::scale (scale));
+            setSize ((int) std::round ((float) JunoEmuEditorContent::baseWidth * scale),
+                     (int) std::round ((float) JunoEmuEditorContent::baseHeight * scale));
+        }
+
+        std::unique_ptr<JunoEmuEditorContent> content;
+        float currentScale = 1.0f;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JunoEmuEditor)
     };

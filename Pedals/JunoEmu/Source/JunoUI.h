@@ -136,13 +136,16 @@ namespace junoui
     {
     public:
         ChoiceSelector (juce::AudioProcessorValueTreeState& state, juce::String paramID,
-                         juce::StringArray optionLabels, juce::Colour accentColour)
+                         juce::StringArray optionLabels, juce::Colour accentColour,
+                         const juce::String& tooltipText = {})
             : apvts (state), id (std::move (paramID)), labels (std::move (optionLabels))
         {
             for (int i = 0; i < labels.size(); ++i)
             {
                 auto* btn = buttons.add (new PillLedButton (labels[i], accentColour));
                 btn->onClick = [this, i] { select (i); };
+                if (tooltipText.isNotEmpty())
+                    btn->setTooltip (tooltipText);
                 addAndMakeVisible (btn);
             }
             if (auto* p = apvts.getParameter (id))
@@ -203,7 +206,8 @@ namespace junoui
     {
     public:
         WaveTabSelector (juce::AudioProcessorValueTreeState& state, juce::String paramID,
-                         juce::StringArray optionLabels, juce::Colour accentColour)
+                         juce::StringArray optionLabels, juce::Colour accentColour,
+                         const juce::String& tooltipText = {})
             : apvts (state), id (std::move (paramID)), labels (std::move (optionLabels)), accent (accentColour)
         {
             for (int i = 0; i < labels.size(); ++i)
@@ -211,6 +215,8 @@ namespace junoui
                 auto* button = buttons.add (new juce::TextButton (labels[i]));
                 button->setClickingTogglesState (false);
                 button->onClick = [this, i] { select (i); };
+                if (tooltipText.isNotEmpty())
+                    button->setTooltip (tooltipText);
                 addAndMakeVisible (button);
             }
             refresh();
@@ -1042,39 +1048,73 @@ namespace junoui
     struct JunoPreset
     {
         juce::String name;
+        juce::String description;
         std::vector<std::pair<juce::String, float>> values;
     };
+
+    // Every non-curve parameter's default value, mirroring
+    // createParameterLayout()'s declared defaults exactly. Presets below
+    // only list the parameters that matter for their own character; this
+    // baseline is applied first so switching presets (or loading one after
+    // hand-tweaking) always lands on exactly the sound the preset was
+    // designed with, with nothing left over from before -- e.g. LEAD
+    // SCREAM's unison detune no longer bleeds into the next preset you pick.
+    inline const std::vector<std::pair<juce::String, float>>& junoPresetDefaults()
+    {
+        static const std::vector<std::pair<juce::String, float>> defaults = {
+            { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.55f }, { "PWM_DEPTH", 0.0f },
+            { "SUB", 0.35f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.04f },
+            { "WT_POS", 0.0f }, { "WT_LEVEL", 0.0f }, { "FM_AMOUNT", 0.0f }, { "HYBRID", 0.0f },
+            { "HPF", 0.18f }, { "CUTOFF", 4200.0f }, { "RESONANCE", 0.18f }, { "FILTER_TYPE", 0.0f },
+            { "ATTACK", 0.008f }, { "DECAY", 0.22f }, { "SUSTAIN", 0.72f }, { "RELEASE", 0.35f },
+            { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
+            { "TEMPOSYNC", 0.0f }, { "NOTEDIV", 4.0f },
+            { "LFO2_RATE", 1.2f }, { "LFO2_DEPTH", 0.0f }, { "LFO2_PITCH", 0.0f },
+            { "LFO1_DEST_A", 1.0f }, { "LFO1_AMT_A", 0.0f },
+            { "LFO1_DEST_B", 0.0f }, { "LFO1_AMT_B", 0.0f }, { "LFO1_SMOOTH", 0.18f },
+            { "MODENV_ATTACK", 0.02f }, { "MODENV_DECAY", 0.35f }, { "MODENV_AMOUNT", 0.0f },
+            { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", 0.0f }, { "OSC2_FINE", 0.0f },
+            { "OSC2_LEVEL", 0.0f }, { "OSC2_WT_POS", 0.0f },
+            { "UNISON", 0.0f }, { "DETUNE", 7.0f }, { "DRIFT", 0.08f },
+            { "FILTER_DRIVE", 0.10f }, { "KEYTRACK", 0.55f }, { "VEL_FILTER", 0.25f },
+            { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.38f },
+            { "DELAY_TIME", 280.0f }, { "DELAY_FEEDBACK", 0.18f }, { "DELAY_MIX", 0.0f },
+            { "REVERB_MIX", 0.0f }, { "WIDTH", 0.72f }, { "DRIVE", 0.0f },
+            { "GLIDE", 0.015f }, { "VEL_VCA", 0.0f }, { "LEVEL", -3.0f }
+        };
+        return defaults;
+    }
 
     inline std::vector<JunoPreset> makeJunoPresets()
     {
         return {
-            { "INIT", {
+            { "INIT", "Neutral starting point -- classic DCO/VCF/VCA with light chorus.", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.55f }, { "PWM_DEPTH", 0.0f },
                 { "SUB", 0.35f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.04f }, { "HPF", 0.18f },
                 { "CUTOFF", 4200.0f }, { "RESONANCE", 0.18f },
                 { "ATTACK", 0.008f }, { "DECAY", 0.22f }, { "SUSTAIN", 0.72f }, { "RELEASE", 0.35f },
                 { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.38f }, { "WIDTH", 0.72f }, { "LEVEL", -3.0f } } },
-            { "CLASSIC PAD", {
+            { "CLASSIC PAD", "Slow-attack Juno-106 pad -- PWM movement and lush chorus II.", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.35f },
                 { "SUB", 0.18f }, { "NOISE", 0.0f }, { "HPF", 0.10f },
                 { "CUTOFF", 2400.0f }, { "RESONANCE", 0.14f },
                 { "ATTACK", 0.60f }, { "DECAY", 0.80f }, { "SUSTAIN", 0.82f }, { "RELEASE", 1.30f },
                 { "LFO_RATE", 3.2f }, { "LFO_DEPTH", 0.15f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.62f }, { "WIDTH", 0.95f }, { "LEVEL", -5.0f } } },
-            { "SUB BASS", {
+            { "SUB BASS", "Tight, mono-friendly low end -- sub oscillator two octaves down.", {
                 { "WAVE", 1.0f }, { "PULSE", 0.30f }, { "SUB", 0.80f }, { "SUB_OCT", 1.0f }, { "NOISE", 0.0f },
                 { "HPF", 0.0f }, { "CUTOFF", 900.0f }, { "RESONANCE", 0.25f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.30f }, { "SUSTAIN", 0.60f }, { "RELEASE", 0.20f },
                 { "LFO_RATE", 2.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 0.0f }, { "WIDTH", 0.30f }, { "LEVEL", -2.0f } } },
-            { "STRING ENSEMBLE", {
+            { "STRING ENSEMBLE", "Wide, slow-swelling strings -- deep chorus II and full width.", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.40f },
                 { "SUB", 0.10f }, { "CUTOFF", 5200.0f }, { "RESONANCE", 0.10f },
                 { "ATTACK", 0.30f }, { "DECAY", 1.0f }, { "SUSTAIN", 0.85f }, { "RELEASE", 1.5f },
                 { "LFO_RATE", 4.5f }, { "LFO_DEPTH", 0.08f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.7f }, { "WIDTH", 1.0f }, { "LEVEL", -5.0f } } },
-            { "LEAD SCREAM", {
+            { "LEAD SCREAM", "Biting unison lead -- detuned OSC2 an octave down, driven filter.", {
                 { "WAVE", 0.0f }, { "PULSE", 0.5f }, { "SUB", 0.0f },
                 { "CUTOFF", 6000.0f }, { "RESONANCE", 0.45f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.15f }, { "SUSTAIN", 0.70f }, { "RELEASE", 0.25f },
@@ -1082,14 +1122,14 @@ namespace junoui
                 { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", -12.0f }, { "OSC2_FINE", 4.0f }, { "OSC2_LEVEL", 0.35f },
                 { "LFO_RATE", 5.5f }, { "LFO_DEPTH", 0.05f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "DRIVE", 0.30f }, { "LEVEL", -3.0f } } },
-            { "GLASS BELLS", {
+            { "GLASS BELLS", "Bright, decaying bell tones -- sine core with a fifth-up OSC2 layer.", {
                 { "WAVE", 4.0f }, { "SUB", 0.0f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
                 { "CUTOFF", 9000.0f }, { "RESONANCE", 0.05f },
                 { "ATTACK", 0.005f }, { "DECAY", 1.4f }, { "SUSTAIN", 0.0f }, { "RELEASE", 1.8f },
                 { "OSC2_WAVE", 3.0f }, { "OSC2_SEMI", 7.0f }, { "OSC2_FINE", 3.0f }, { "OSC2_LEVEL", 0.45f },
                 { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.03f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.55f }, { "WIDTH", 1.0f }, { "LEVEL", -4.0f } } },
-            { "PLUCK", {
+            { "PLUCK", "Percussive plucked tone -- fast decay with a drawn filter-snap curve.", {
                 // The percussive filter snap now comes from the drawn Mod
                 // Shape curve (destination A = Cutoff) instead of a separate
                 // filter-envelope amount: a fast amp DECAY to SUSTAIN 0 gives
@@ -1103,7 +1143,7 @@ namespace junoui
                 { "TEMPOSYNC", 0.0f }, { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "LFO1_DEST_A", 1.0f }, { "LFO1_AMT_A", 0.55f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.25f }, { "WIDTH", 0.6f }, { "LEVEL", -4.0f } } },
-            { "FILTER WOBBLE", {
+            { "FILTER WOBBLE", "Rhythmic LFO-driven cutoff sweep -- held notes stay sustained.", {
                 // LFO_FILTER driving the cutoff is the Serum-style "wobble" --
                 // SUSTAIN stays high so held notes don't die, and the LFO
                 // does all the movement.
@@ -1113,6 +1153,42 @@ namespace junoui
                 { "FILTER_DRIVE", 0.20f }, { "KEYTRACK", 0.30f },
                 { "LFO_RATE", 3.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.55f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "WIDTH", 0.7f }, { "LEVEL", -4.0f } } },
+            { "WARM BRASS", "Rounded ensemble brass -- key-tracked filter, gentle OSC2 detune.", {
+                { "WAVE", 2.0f }, { "PULSE", 0.42f }, { "SUB", 0.10f }, { "NOISE", 0.0f },
+                { "CUTOFF", 3200.0f }, { "RESONANCE", 0.22f }, { "FILTER_TYPE", 0.0f },
+                { "ATTACK", 0.06f }, { "DECAY", 0.35f }, { "SUSTAIN", 0.78f }, { "RELEASE", 0.30f },
+                { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", 0.0f }, { "OSC2_FINE", 6.0f }, { "OSC2_LEVEL", 0.30f },
+                { "KEYTRACK", 0.60f }, { "FILTER_DRIVE", 0.18f },
+                { "LFO_RATE", 4.5f }, { "LFO_DEPTH", 0.04f }, { "LFO_FILTER", 0.0f },
+                { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.35f }, { "WIDTH", 0.8f }, { "LEVEL", -4.0f } } },
+            { "EP KEYS", "Electric-piano-style tine -- FM bite with a fast, short decay.", {
+                { "WAVE", 4.0f }, { "FM_AMOUNT", 0.18f }, { "HYBRID", 0.25f }, { "SUB", 0.0f }, { "NOISE", 0.0f },
+                { "CUTOFF", 5200.0f }, { "RESONANCE", 0.08f },
+                { "ATTACK", 0.004f }, { "DECAY", 0.9f }, { "SUSTAIN", 0.15f }, { "RELEASE", 0.6f },
+                { "OSC2_WAVE", 3.0f }, { "OSC2_SEMI", 12.0f }, { "OSC2_FINE", 2.0f }, { "OSC2_LEVEL", 0.25f },
+                { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
+                { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "WIDTH", 0.75f }, { "LEVEL", -4.0f } } },
+            { "AMBIENT DRONE", "Slow-evolving wavetable drone -- long reverb and echo tail.", {
+                { "WAVE", 5.0f }, { "HYBRID", 1.0f }, { "WT_POS", 5.0f }, { "WT_LEVEL", 0.6f }, { "SUB", 0.0f },
+                { "CUTOFF", 1800.0f }, { "RESONANCE", 0.30f },
+                { "ATTACK", 2.0f }, { "DECAY", 2.0f }, { "SUSTAIN", 0.9f }, { "RELEASE", 3.5f },
+                { "LFO2_RATE", 0.15f }, { "LFO2_DEPTH", 0.5f }, { "LFO2_PITCH", 0.15f },
+                { "REVERB_MIX", 0.55f }, { "DELAY_MIX", 0.25f }, { "DELAY_TIME", 520.0f }, { "DELAY_FEEDBACK", 0.35f },
+                { "WIDTH", 1.0f }, { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.6f }, { "LEVEL", -6.0f } } },
+            { "TALKING WAH", "Vocal-like auto-wah -- high-pass sweep driven by the classic LFO.", {
+                { "WAVE", 1.0f }, { "PULSE", 0.40f }, { "SUB", 0.20f }, { "NOISE", 0.0f }, { "HPF", 0.25f },
+                { "CUTOFF", 1000.0f }, { "RESONANCE", 0.55f }, { "FILTER_TYPE", 2.0f },
+                { "ATTACK", 0.01f }, { "DECAY", 0.25f }, { "SUSTAIN", 0.75f }, { "RELEASE", 0.30f },
+                { "KEYTRACK", 0.20f }, { "FILTER_DRIVE", 0.25f },
+                { "LFO_RATE", 2.2f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.60f },
+                { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.20f }, { "WIDTH", 0.6f }, { "LEVEL", -4.0f } } },
+            { "FAT UNISON PAD", "Wide, detuned modern pad -- 16-voice unison headroom, big chorus.", {
+                { "WAVE", 0.0f }, { "SUB", 0.25f }, { "NOISE", 0.0f },
+                { "UNISON", 0.85f }, { "DETUNE", 14.0f }, { "DRIFT", 0.15f },
+                { "CUTOFF", 3600.0f }, { "RESONANCE", 0.15f },
+                { "ATTACK", 0.45f }, { "DECAY", 0.60f }, { "SUSTAIN", 0.85f }, { "RELEASE", 1.6f },
+                { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", -12.0f }, { "OSC2_LEVEL", 0.40f },
+                { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.65f }, { "WIDTH", 1.0f }, { "LEVEL", -6.0f } } },
         };
     }
 
@@ -1193,8 +1269,7 @@ namespace junoui
 
             g.setColour (juce::Colours::white.withAlpha (0.28f));
             g.setFont (juce::Font (juce::FontOptions (9.0f)));
-            g.drawText ("6 VOICES  -  DCO / WT / FM / VCF / VCA  -  CHORUS I & II",
-                        footerArea, juce::Justification::centred);
+            g.drawText (footerText, footerArea, juce::Justification::centred);
         }
 
         void resized() override
@@ -1233,10 +1308,11 @@ namespace junoui
             filterView->setBounds (visualRow);
 
             // Row 1: DCO | OSC 2 | VCF, widths proportional to column count
-            // (DCO 7 cols, OSC2 4 cols, VCF 8 cols -- VCF grew a TYPE selector)
-            const float r1Cols = 11.0f + 6.0f + 8.0f;
+            // (DCO 9 cols, OSC2 6 cols, VCF 7 cols -- HYBRID moved out of DCO
+            // into its single home on the MODERN EXTRAS panel, see below)
+            const float r1Cols = 9.0f + 6.0f + 7.0f;
             const int r1AvailW = row1.getWidth() - gap * 2;
-            const int dcoW = (int) (r1AvailW * (11.0f / r1Cols));
+            const int dcoW = (int) (r1AvailW * (9.0f / r1Cols));
             const int osc2W = (int) (r1AvailW * (6.0f / r1Cols));
             dcoPanel->setBounds (row1.removeFromLeft (dcoW));
             row1.removeFromLeft (gap);
@@ -1301,7 +1377,8 @@ namespace junoui
 
             presetBox.addItem ("MANUAL", 1);
             presetBox.setLookAndFeel (&modernLnf);
-            presetBox.setTooltip ("Load a factory preset (still fully editable afterwards)");
+            presetBox.setTooltip ("Load a factory preset (still fully editable afterwards) -- "
+                                   "its description appears at the bottom of the panel");
             addAndMakeVisible (presetBox);
 
             // UI size presets. The whole editor is built at one native
@@ -1339,21 +1416,24 @@ namespace junoui
         {
             dcoPanel = std::make_unique<PanelSection> ("DCO", accent);
             addAndMakeVisible (*dcoPanel);
-            addWaveTabs (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE", "WT" });
+            addWaveTabs (*dcoPanel, "WAVE", { "SAW", "PULSE", "SAW+PLS", "TRI", "SINE", "WT" },
+                         "Sets the main oscillator's waveform. WT crossfades in the Wavetable "
+                         "Shape/Level below instead of replacing the classic DCO outright.");
             addClassicSlider (*dcoPanel, "PULSE", "PW");
             addClassicSlider (*dcoPanel, "PWM_RATE", "PWM RT");
             addClassicSlider (*dcoPanel, "PWM_DEPTH", "PWM DEP");
             addClassicSlider (*dcoPanel, "SUB", "SUB");
-            addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
+            addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT",
+                         "Sets how many octaves below the main pitch the sub oscillator plays.");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
             addDropdown (*dcoPanel, "WT_POS",
                          { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" }, "SHAPE");
                         addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
-            addClassicSlider (*dcoPanel, "HYBRID", "HYBRID");
 
             osc2Panel = std::make_unique<PanelSection> ("OSC 2", accent);
             addAndMakeVisible (*osc2Panel);
-            addWaveTabs (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE", "WT" });
+            addWaveTabs (*osc2Panel, "OSC2_WAVE", { "SAW", "PULSE", "TRI", "SINE", "WT" },
+                         "Sets the second oscillator's waveform.");
             addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
             addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
             addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
@@ -1365,7 +1445,9 @@ namespace junoui
             addAndMakeVisible (*vcfPanel);
             addClassicSlider (*vcfPanel, "HPF", "HPF");
             addClassicSlider (*vcfPanel, "CUTOFF", "CUTOFF");
-            addSelector (*vcfPanel, "FILTER_TYPE", { "JUNO LP24", "LP12", "HP12", "BP12", "NOTCH" }, "TYPE");
+            addSelector (*vcfPanel, "FILTER_TYPE", { "JUNO LP24", "LP12", "HP12", "BP12", "NOTCH" }, "TYPE",
+                         "Chooses the VCF's response shape. Juno LP24 is the classic 4-pole "
+                         "low-pass; the rest are 12 dB/oct modes for creative filtering.");
             addClassicSlider (*vcfPanel, "RESONANCE", "RESO");
             addClassicSlider (*vcfPanel, "KEYTRACK", "KEY TRK");
             addClassicSlider (*vcfPanel, "VEL_FILTER", "VEL FLT");
@@ -1394,7 +1476,9 @@ namespace junoui
 
             fxPanel = std::make_unique<PanelSection> ("CHORUS", accent);
             addAndMakeVisible (*fxPanel);
-            addSelector (*fxPanel, "CHORUS", { "OFF", "I", "II" }, "MODE");
+            addSelector (*fxPanel, "CHORUS", { "OFF", "I", "II" }, "MODE",
+                         "Selects the classic Juno chorus mode, or turns it off. "
+                         "I is subtle movement, II is wider and more pronounced.");
             addClassicSlider (*fxPanel, "CHORUS_MIX", "MIX");
             addClassicSlider (*fxPanel, "GLIDE", "GLIDE");
             addClassicSlider (*fxPanel, "VEL_VCA", "VEL VCA");
@@ -1472,15 +1556,17 @@ namespace junoui
             modernSliders.push_back (std::move (c));
         }
 
-        void addWaveTabs (PanelSection& section, const juce::String& id, juce::StringArray labels)
+        void addWaveTabs (PanelSection& section, const juce::String& id, juce::StringArray labels,
+                          const juce::String& tooltipText = {})
         {
-            auto selector = std::make_unique<WaveTabSelector> (apvts, id, std::move (labels), accent);
+            auto selector = std::make_unique<WaveTabSelector> (apvts, id, std::move (labels), accent, tooltipText);
             section.addAndMakeVisible (*selector);
             section.addItem (nullptr, selector.get());
             waveTabs.push_back (std::move (selector));
         }
 
-        void addSelector (PanelSection& section, const juce::String& id, juce::StringArray labels, const juce::String& captionText)
+        void addSelector (PanelSection& section, const juce::String& id, juce::StringArray labels,
+                          const juce::String& captionText, const juce::String& tooltipText = {})
         {
             auto label = std::make_unique<juce::Label>();
             label->setText (captionText, juce::dontSendNotification);
@@ -1489,7 +1575,7 @@ namespace junoui
             label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.68f));
             section.addAndMakeVisible (*label);
 
-            auto selector = std::make_unique<ChoiceSelector> (apvts, id, std::move (labels), accent);
+            auto selector = std::make_unique<ChoiceSelector> (apvts, id, std::move (labels), accent, tooltipText);
             section.addAndMakeVisible (*selector);
             section.addItem (label.get(), selector.get());
 
@@ -1534,10 +1620,27 @@ namespace junoui
         {
             const int id = presetBox.getSelectedId();
             if (id < 2 || id - 2 >= (int) presets.size())
+            {
+                footerText = defaultFooterText;
+                repaint();
                 return;
-            for (const auto& [paramID, value] : presets[(size_t) (id - 2)].values)
+            }
+
+            // Reset to the shared baseline first (see junoPresetDefaults()),
+            // then layer the preset's own values on top, so every preset
+            // load is fully deterministic regardless of what was selected
+            // or hand-tweaked beforehand.
+            for (const auto& [paramID, value] : junoPresetDefaults())
                 if (auto* p = apvts.getParameter (paramID))
                     p->setValueNotifyingHost (p->convertTo0to1 (value));
+
+            const auto& preset = presets[(size_t) (id - 2)];
+            for (const auto& [paramID, value] : preset.values)
+                if (auto* p = apvts.getParameter (paramID))
+                    p->setValueNotifyingHost (p->convertTo0to1 (value));
+
+            footerText = preset.description;
+            repaint();
         }
 
         juce::AudioProcessorValueTreeState& apvts;
@@ -1551,6 +1654,8 @@ namespace junoui
         juce::ComboBox presetBox;
         juce::ComboBox sizeBox;
         std::vector<JunoPreset> presets;
+        const juce::String defaultFooterText { "16 VOICES  -  DCO / WT / FM / VCF / VCA  -  CHORUS I & II" };
+        juce::String footerText { defaultFooterText };
 
         std::unique_ptr<WaveScopeDisplay> waveScope;
         std::unique_ptr<EnvelopeCurveView> envView;

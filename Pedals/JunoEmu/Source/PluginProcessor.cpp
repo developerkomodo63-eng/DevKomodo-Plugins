@@ -167,7 +167,11 @@ JunoEmuAudioProcessor::JunoEmuAudioProcessor()
 #endif
 {
     synth.setNoteStealingEnabled (true);
-    for (int i = 0; i < 6; ++i)
+    // 16 voices: enough headroom for dense chord/pad presets (STRING
+    // ENSEMBLE, CHORD) plus unison-doubled leads without stealing notes
+    // under a sustained pad -- the previous 6-voice ceiling made those
+    // presets choke on anything beyond a triad.
+    for (int i = 0; i < 16; ++i)
         synth.addVoice (new JunoEmuVoice (*this));
     synth.addSound (new JunoEmuSound());
 }

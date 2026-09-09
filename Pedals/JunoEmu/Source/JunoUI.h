@@ -105,6 +105,30 @@ namespace junoui
     };
 
     //--------------------------------------------------------------------
+    // PanelSection hands every item the full column height (knobs and the
+    // pill-button stacks want that); a native juce::ComboBox doesn't --
+    // it looks stretched and strange filled out to 80+ px tall. This just
+    // centres a normal-height dropdown in whatever space it's given.
+    //--------------------------------------------------------------------
+    class DropdownField final : public juce::Component
+    {
+    public:
+        explicit DropdownField (juce::ComboBox& boxToHost) : box (boxToHost)
+        {
+            addAndMakeVisible (box);
+        }
+
+        void resized() override
+        {
+            auto b = getLocalBounds();
+            box.setBounds (b.withSizeKeepingCentre (b.getWidth(), juce::jmin (24, b.getHeight())));
+        }
+
+    private:
+        juce::ComboBox& box;
+    };
+
+    //--------------------------------------------------------------------
     // A stack of PillLedButtons bound directly to an AudioParameterChoice.
     //--------------------------------------------------------------------
     class ChoiceSelector final : public juce::Component
@@ -1270,8 +1294,8 @@ namespace junoui
             addClassicSlider (*dcoPanel, "SUB", "SUB");
             addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
-            addWaveTabs (*dcoPanel, "WT_POS",
-                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" });
+            addDropdown (*dcoPanel, "WT_POS",
+                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" }, "SHAPE");
                         addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
             addClassicSlider (*dcoPanel, "HYBRID", "HYBRID");
 
@@ -1281,8 +1305,8 @@ namespace junoui
             addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
             addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
             addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
-            addWaveTabs (*osc2Panel, "OSC2_WT_POS",
-                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" });
+            addDropdown (*osc2Panel, "OSC2_WT_POS",
+                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" }, "SHAPE");
             addClassicSlider (*osc2Panel, "FM_AMOUNT", "FM");
 
             vcfPanel = std::make_unique<PanelSection> ("HPF / VCF", accent);
@@ -1421,6 +1445,39 @@ namespace junoui
             selectors.push_back (std::move (selector));
         }
 
+        // A genuine drop-down menu (juce::ComboBox), for choices where a
+        // pill-button stack would take up too much vertical room or where
+        // the person just wants to click a field and pick from a list --
+        // e.g. the oscillator's wavetable shape.
+        void addDropdown (PanelSection& section, const juce::String& id, juce::StringArray labels, const juce::String& captionText)
+        {
+            auto label = std::make_unique<juce::Label>();
+            label->setText (captionText, juce::dontSendNotification);
+            label->setJustificationType (juce::Justification::centred);
+            label->setFont (juce::Font (juce::FontOptions (8.8f, juce::Font::bold)));
+            label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.68f));
+            section.addAndMakeVisible (*label);
+
+            auto box = std::make_unique<juce::ComboBox>();
+            box->addItemList (labels, 1);
+            box->setColour (juce::ComboBox::backgroundColourId, juce::Colour::fromRGB (30, 27, 24));
+            box->setColour (juce::ComboBox::outlineColourId, accent.withAlpha (0.45f));
+            box->setColour (juce::ComboBox::textColourId, juce::Colours::white.withAlpha (0.85f));
+            box->setColour (juce::ComboBox::arrowColourId, accent);
+            if (auto* p = apvts.getParameter (id))
+                box->setTooltip (devkomodo::parameterTooltip (id, p->name));
+
+            auto field = std::make_unique<DropdownField> (*box);
+            section.addAndMakeVisible (*field);
+            section.addItem (label.get(), field.get());
+
+            dropdownAttachments.push_back (
+                std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, id, *box));
+            dropdownLabels.push_back (std::move (label));
+            dropdownFields.push_back (std::move (field));
+            dropdowns.push_back (std::move (box));
+        }
+
         void applySelectedPreset()
         {
             const int id = presetBox.getSelectedId();
@@ -1454,6 +1511,10 @@ namespace junoui
         std::vector<std::unique_ptr<juce::Label>> selectorLabels;
         std::vector<std::unique_ptr<ChoiceSelector>> selectors;
         std::vector<std::unique_ptr<WaveTabSelector>> waveTabs;
+        std::vector<std::unique_ptr<juce::Label>> dropdownLabels;
+        std::vector<std::unique_ptr<DropdownField>> dropdownFields;
+        std::vector<std::unique_ptr<juce::ComboBox>> dropdowns;
+        std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> dropdownAttachments;
 
         juce::Rectangle<int> footerArea;
 

@@ -40,7 +40,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("SUB", "Sub Osc", 0.0f, 1.0f, 0.35f);
     choice ("SUB_OCT", "Sub Octave", { "-1 Oct", "-2 Oct" }, 0);
     f ("NOISE", "Noise", 0.0f, 1.0f, 0.04f);
-    f ("WT_POS", "Wavetable Position", 0.0f, 1.0f, 0.0f);
+    choice ("WT_POS", "Wavetable Shape",
+            { "Sine", "Triangle", "Saw", "Square", "Sine 2H", "Organ", "Formant", "Buzz Saw" }, 0);
     f ("WT_LEVEL", "Wavetable Level", 0.0f, 1.0f, 0.0f);
     f ("FM_AMOUNT", "FM Amount", 0.0f, 1.0f, 0.0f);
     f ("HYBRID", "Analog / Modern", 0.0f, 1.0f, 0.0f);
@@ -101,7 +102,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     f ("OSC2_SEMI", "Osc 2 Semitone", -24.0f, 24.0f, 0.0f);
     f ("OSC2_FINE", "Osc 2 Fine", -50.0f, 50.0f, 0.0f);
     f ("OSC2_LEVEL", "Osc 2 Level", 0.0f, 1.0f, 0.0f);
-    f ("OSC2_WT_POS", "Osc 2 WT Position", 0.0f, 1.0f, 0.0f);
+    choice ("OSC2_WT_POS", "Osc 2 Wavetable Shape",
+            { "Sine", "Triangle", "Saw", "Square", "Sine 2H", "Organ", "Formant", "Buzz Saw" }, 0);
     // Modern controls: these extend the classic architecture without
     // replacing its core Juno-style DCO/VCF/chorus character.
     f ("UNISON", "Modern Unison", 0.0f, 1.0f, 0.0f);
@@ -521,7 +523,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float subLevel = parameter (s, "SUB", 0.35f);
     const int subOct = (int) parameter (s, "SUB_OCT", 0.0f);
     const float noiseLevel = parameter (s, "NOISE", 0.04f);
-    const float wtPos = parameter (s, "WT_POS", 0.0f);
+    const float wtPos = parameter (s, "WT_POS", 0.0f) / 7.0f;
     const float wtLevel = parameter (s, "WT_LEVEL", 0.0f);
     const float fmAmount = parameter (s, "FM_AMOUNT", 0.0f);
     const float hybrid = parameter (s, "HYBRID", 0.0f);
@@ -549,7 +551,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float osc2Semi = parameter (s, "OSC2_SEMI", 0.0f);
     const float osc2Fine = parameter (s, "OSC2_FINE", 0.0f);
     const float osc2Level = parameter (s, "OSC2_LEVEL", 0.0f);
-    const float osc2WtPos = parameter (s, "OSC2_WT_POS", 0.0f);
+    const float osc2WtPos = parameter (s, "OSC2_WT_POS", 0.0f) / 7.0f;
     const float glide = parameter (s, "GLIDE", 0.015f);
     const float velocityVca = parameter (s, "VEL_VCA", 0.0f);
     const int curveDestA = (int) parameter (s, "LFO1_DEST_A", 1.0f);

@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "../../Common/ParameterTooltips.h"
+#include "../../Common/TempoSync.h"
 #include "DevKomodoUI.h"
 #include <vector>
 #include <memory>
@@ -276,6 +277,49 @@ namespace junoui
             addAndMakeVisible (amountB);
             addAndMakeVisible (rate);
             addAndMakeVisible (smooth);
+
+            // Every control here used to have no caption at all -- fine for
+            // a knob whose name is printed on hardware silkscreen, not for a
+            // software panel where the only clue was position.
+            makeLabel (destALabel, "DEST A");
+            makeLabel (amountALabel, "AMT A");
+            makeLabel (destBLabel, "DEST B");
+            makeLabel (amountBLabel, "AMT B");
+            makeLabel (rateLabel, "RATE");
+            makeLabel (smoothLabel, "SMOOTH");
+
+            // BPM sync for the Mod Shape rate: when engaged, LFO_RATE is
+            // ignored and the curve instead advances in lock-step with the
+            // host tempo at the chosen note division (see TempoSync.h /
+            // DevKomodoTempoSync::resolveHz, applied in renderNextBlock()).
+            syncButton.setButtonText ("SYNC");
+            syncButton.setTooltip ("Lock the Mod Shape rate to the host tempo instead of running free in Hz");
+            syncButton.setClickingTogglesState (true);
+            syncButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.55f));
+            if (auto* p = apvts.getParameter ("TEMPOSYNC"))
+                syncButton.setToggleState (p->getValue() > 0.5f, juce::dontSendNotification);
+            syncButton.onClick = [this]
+            {
+                if (auto* p = apvts.getParameter ("TEMPOSYNC"))
+                    p->setValueNotifyingHost (syncButton.getToggleState() ? 1.0f : 0.0f);
+                rate.setEnabled (! syncButton.getToggleState());
+                noteDiv.setEnabled (syncButton.getToggleState());
+            };
+            addAndMakeVisible (syncButton);
+
+            noteDiv.addItemList (DevKomodoTempoSync::noteDivisionChoices(), 1);
+            noteDiv.setTooltip ("Note division used when SYNC is on");
+            if (auto* p = apvts.getParameter ("NOTEDIV"))
+                noteDiv.setSelectedId (juce::roundToInt (p->getValue() * 13.0f) + 1, juce::dontSendNotification);
+            noteDiv.onChange = [this]
+            {
+                if (auto* p = apvts.getParameter ("NOTEDIV"))
+                    p->setValueNotifyingHost ((float) (noteDiv.getSelectedId() - 1) / 13.0f);
+            };
+            addAndMakeVisible (noteDiv);
+            rate.setEnabled (! syncButton.getToggleState());
+            noteDiv.setEnabled (syncButton.getToggleState());
+
             startTimerHz (15);
         }
 
@@ -357,21 +401,51 @@ namespace junoui
         void resized() override
         {
             auto area = getLocalBounds().reduced (8);
+            auto syncRow = area.removeFromBottom (18);
             auto controls = area.removeFromBottom (42);
+            auto labels = area.removeFromBottom (12);
             const int gap = 6;
             const int w = (controls.getWidth() - gap * 5) / 6;
-            destA.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
-            amountA.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
-            destB.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
-            amountB.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
-            rate.setBounds (controls.removeFromLeft (w)); controls.removeFromLeft (gap);
-            smooth.setBounds (controls);
+
+            auto placeColumn = [&] (juce::Rectangle<int> labelArea, juce::Rectangle<int> controlArea,
+                                     juce::Label& label, juce::Component& control)
+            {
+                label.setBounds (labelArea);
+                control.setBounds (controlArea);
+            };
+
+            placeColumn (labels.removeFromLeft (w), controls.removeFromLeft (w), destALabel, destA);
+            labels.removeFromLeft (gap); controls.removeFromLeft (gap);
+            placeColumn (labels.removeFromLeft (w), controls.removeFromLeft (w), amountALabel, amountA);
+            labels.removeFromLeft (gap); controls.removeFromLeft (gap);
+            placeColumn (labels.removeFromLeft (w), controls.removeFromLeft (w), destBLabel, destB);
+            labels.removeFromLeft (gap); controls.removeFromLeft (gap);
+            placeColumn (labels.removeFromLeft (w), controls.removeFromLeft (w), amountBLabel, amountB);
+            labels.removeFromLeft (gap); controls.removeFromLeft (gap);
+
+            auto rateLabelArea = labels.removeFromLeft (w);
+            auto rateControlArea = controls.removeFromLeft (w);
+            labels.removeFromLeft (gap); controls.removeFromLeft (gap);
+            placeColumn (rateLabelArea, rateControlArea, rateLabel, rate);
+
+            placeColumn (labels, controls, smoothLabel, smooth);
+
+            // Sync row sits only under the RATE column -- SYNC toggle and
+            // note-division combo, since they're specifically what makes
+            // the Mod Shape rate follow the host tempo.
+            auto syncArea = juce::Rectangle<int> (rateControlArea.getX(), syncRow.getY(),
+                                                   juce::jmin (rateControlArea.getWidth() * 2 + gap,
+                                                               syncRow.getRight() - rateControlArea.getX()),
+                                                   syncRow.getHeight());
+            syncButton.setBounds (syncArea.removeFromLeft (syncArea.getWidth() / 2 - 3));
+            syncArea.removeFromLeft (6);
+            noteDiv.setBounds (syncArea);
         }
 
     private:
         juce::Rectangle<int> graphBounds() const
         {
-            return getLocalBounds().reduced (8).withTrimmedBottom (50);
+            return getLocalBounds().reduced (8).withTrimmedBottom (72);
         }
 
         float raw (const juce::String& id, float fallback) const
@@ -442,13 +516,38 @@ namespace junoui
             attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, id, slider));
         }
 
-        void timerCallback() override { repaint(); }
+        void makeLabel (juce::Label& label, const juce::String& text)
+        {
+            label.setText (text, juce::dontSendNotification);
+            label.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
+            label.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.55f));
+            label.setJustificationType (juce::Justification::centred);
+            addAndMakeVisible (label);
+        }
+
+        void timerCallback() override
+        {
+            if (auto* p = apvts.getParameter ("TEMPOSYNC"))
+            {
+                const bool synced = p->getValue() > 0.5f;
+                if (synced != syncButton.getToggleState())
+                {
+                    syncButton.setToggleState (synced, juce::dontSendNotification);
+                    rate.setEnabled (! synced);
+                    noteDiv.setEnabled (synced);
+                }
+            }
+            repaint();
+        }
 
         juce::AudioProcessorValueTreeState& apvts;
         juce::Colour accent;
         std::vector<juce::String> points;
         juce::ComboBox destA, destB;
         juce::Slider amountA, amountB, rate, smooth;
+        juce::Label destALabel, amountALabel, destBLabel, amountBLabel, rateLabel, smoothLabel;
+        juce::TextButton syncButton;
+        juce::ComboBox noteDiv;
         std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
     };
 
@@ -771,7 +870,7 @@ namespace junoui
             auto area = b.reduced (10.0f, 16.0f);
             const float cutoff = raw ("CUTOFF", 4200.0f);
             const float reso = juce::jlimit (0.0f, 1.0f, raw ("RESONANCE", 0.18f));
-            const int filterType = (int) raw ("FILTER_TYPE", 1.0f);
+            const int filterType = (int) raw ("FILTER_TYPE", 0.0f);
 
             const float minF = std::log10 (40.0f), maxF = std::log10 (20000.0f);
             const float cutNorm = juce::jlimit (0.0f, 1.0f,
@@ -789,10 +888,10 @@ namespace junoui
                 float mag = 1.0f;
                 switch (filterType)
                 {
-                    case 0: // LP 12dB
-                    case 1: // LP 24dB
+                    case 0: // Juno LP 24dB
+                    case 1: // LP 12dB
                     {
-                        const float slope = filterType == 1 ? 0.08f : 0.14f;
+                        const float slope = filterType == 0 ? 0.08f : 0.14f;
                         if (dist <= 0.0f)
                         {
                             mag = 1.0f + (-dist < 0.08f ? reso * (1.0f - (-dist) / 0.08f) * 0.9f : 0.0f);
@@ -845,7 +944,7 @@ namespace junoui
             g.setColour (juce::Colours::white.withAlpha (0.18f));
             g.drawVerticalLine ((int) cx, area.getY(), area.getBottom());
 
-            static constexpr const char* typeNames[] = { "LP12", "LP24", "HP12", "BP12", "NOTCH" };
+            static constexpr const char* typeNames[] = { "JUNO LP24", "LP12", "HP12", "BP12", "NOTCH" };
             g.setColour (juce::Colours::white.withAlpha (0.38f));
             g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)));
             g.drawText (juce::String ("VCF RESPONSE - ") + typeNames[juce::jlimit (0, 4, filterType)],
@@ -876,71 +975,65 @@ namespace junoui
             { "INIT", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.55f }, { "PWM_DEPTH", 0.0f },
                 { "SUB", 0.35f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.04f }, { "HPF", 0.18f },
-                { "CUTOFF", 4200.0f }, { "RESONANCE", 0.18f }, { "ENV_AMOUNT", 0.45f },
+                { "CUTOFF", 4200.0f }, { "RESONANCE", 0.18f },
                 { "ATTACK", 0.008f }, { "DECAY", 0.22f }, { "SUSTAIN", 0.72f }, { "RELEASE", 0.35f },
-                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.25f }, { "FILTER_SUSTAIN", 0.72f },
                 { "LFO_RATE", 4.8f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.38f }, { "WIDTH", 0.72f }, { "LEVEL", -3.0f } } },
             { "CLASSIC PAD", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.35f },
                 { "SUB", 0.18f }, { "NOISE", 0.0f }, { "HPF", 0.10f },
-                { "CUTOFF", 2400.0f }, { "RESONANCE", 0.14f }, { "ENV_AMOUNT", 0.30f },
+                { "CUTOFF", 2400.0f }, { "RESONANCE", 0.14f },
                 { "ATTACK", 0.60f }, { "DECAY", 0.80f }, { "SUSTAIN", 0.82f }, { "RELEASE", 1.30f },
-                { "FILTER_ATTACK", 0.45f }, { "FILTER_DECAY", 0.60f }, { "FILTER_SUSTAIN", 0.82f },
                 { "LFO_RATE", 3.2f }, { "LFO_DEPTH", 0.15f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.62f }, { "WIDTH", 0.95f }, { "LEVEL", -5.0f } } },
             { "SUB BASS", {
                 { "WAVE", 1.0f }, { "PULSE", 0.30f }, { "SUB", 0.80f }, { "SUB_OCT", 1.0f }, { "NOISE", 0.0f },
-                { "HPF", 0.0f }, { "CUTOFF", 900.0f }, { "RESONANCE", 0.25f }, { "ENV_AMOUNT", 0.5f },
+                { "HPF", 0.0f }, { "CUTOFF", 900.0f }, { "RESONANCE", 0.25f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.30f }, { "SUSTAIN", 0.60f }, { "RELEASE", 0.20f },
-                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.20f }, { "FILTER_SUSTAIN", 0.60f },
                 { "LFO_RATE", 2.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 0.0f }, { "WIDTH", 0.30f }, { "LEVEL", -2.0f } } },
             { "STRING ENSEMBLE", {
                 { "WAVE", 2.0f }, { "PULSE", 0.50f }, { "PWM_RATE", 0.30f }, { "PWM_DEPTH", 0.40f },
-                { "SUB", 0.10f }, { "CUTOFF", 5200.0f }, { "RESONANCE", 0.10f }, { "ENV_AMOUNT", 0.20f },
+                { "SUB", 0.10f }, { "CUTOFF", 5200.0f }, { "RESONANCE", 0.10f },
                 { "ATTACK", 0.30f }, { "DECAY", 1.0f }, { "SUSTAIN", 0.85f }, { "RELEASE", 1.5f },
-                { "FILTER_SUSTAIN", 0.85f },
                 { "LFO_RATE", 4.5f }, { "LFO_DEPTH", 0.08f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.7f }, { "WIDTH", 1.0f }, { "LEVEL", -5.0f } } },
             { "LEAD SCREAM", {
                 { "WAVE", 0.0f }, { "PULSE", 0.5f }, { "SUB", 0.0f },
-                { "CUTOFF", 6000.0f }, { "RESONANCE", 0.45f }, { "ENV_AMOUNT", 0.6f },
+                { "CUTOFF", 6000.0f }, { "RESONANCE", 0.45f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.15f }, { "SUSTAIN", 0.70f }, { "RELEASE", 0.25f },
-                { "FILTER_SUSTAIN", 0.70f },
                 { "UNISON", 0.6f }, { "DETUNE", 9.0f }, { "DRIFT", 0.10f },
                 { "OSC2_WAVE", 0.0f }, { "OSC2_SEMI", -12.0f }, { "OSC2_FINE", 4.0f }, { "OSC2_LEVEL", 0.35f },
                 { "LFO_RATE", 5.5f }, { "LFO_DEPTH", 0.05f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "DRIVE", 0.30f }, { "LEVEL", -3.0f } } },
             { "GLASS BELLS", {
                 { "WAVE", 4.0f }, { "SUB", 0.0f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
-                { "CUTOFF", 9000.0f }, { "RESONANCE", 0.05f }, { "ENV_AMOUNT", 0.15f },
+                { "CUTOFF", 9000.0f }, { "RESONANCE", 0.05f },
                 { "ATTACK", 0.005f }, { "DECAY", 1.4f }, { "SUSTAIN", 0.0f }, { "RELEASE", 1.8f },
-                { "FILTER_SUSTAIN", 0.0f },
                 { "OSC2_WAVE", 3.0f }, { "OSC2_SEMI", 7.0f }, { "OSC2_FINE", 3.0f }, { "OSC2_LEVEL", 0.45f },
                 { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.03f }, { "LFO_FILTER", 0.0f },
                 { "CHORUS", 2.0f }, { "CHORUS_MIX", 0.55f }, { "WIDTH", 1.0f }, { "LEVEL", -4.0f } } },
             { "PLUCK", {
-                // Classic decoupled filter-envelope pluck: fast filter attack/decay
-                // snapping the VCF open and shut again while FILTER_SUSTAIN sits at
-                // 0, independent of the amp envelope -- this is the shape the shared
-                // sustain used to make impossible.
+                // The percussive filter snap now comes from the drawn Mod
+                // Shape curve (destination A = Cutoff) instead of a separate
+                // filter-envelope amount: a fast amp DECAY to SUSTAIN 0 gives
+                // the pluck its length, RESONANCE gives it bite, and routing
+                // curve A to Cutoff at a fast, un-synced rate adds movement
+                // on top -- open the FILTER / MOD SHAPE panel to redraw it.
                 { "WAVE", 0.0f }, { "PULSE", 0.5f }, { "SUB", 0.15f }, { "NOISE", 0.0f }, { "HPF", 0.05f },
-                { "CUTOFF", 1800.0f }, { "RESONANCE", 0.35f }, { "FILTER_TYPE", 1.0f }, { "ENV_AMOUNT", 0.85f },
+                { "CUTOFF", 1800.0f }, { "RESONANCE", 0.35f }, { "FILTER_TYPE", 1.0f },
                 { "ATTACK", 0.002f }, { "DECAY", 0.25f }, { "SUSTAIN", 0.0f }, { "RELEASE", 0.18f },
-                { "FILTER_ATTACK", 0.001f }, { "FILTER_DECAY", 0.12f }, { "FILTER_SUSTAIN", 0.0f },
                 { "FILTER_DRIVE", 0.15f }, { "KEYTRACK", 0.65f },
-                { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
+                { "TEMPOSYNC", 0.0f }, { "LFO_RATE", 5.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.0f },
+                { "LFO1_DEST_A", 1.0f }, { "LFO1_AMT_A", 0.55f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.25f }, { "WIDTH", 0.6f }, { "LEVEL", -4.0f } } },
             { "FILTER WOBBLE", {
                 // LFO_FILTER driving the cutoff is the Serum-style "wobble" --
-                // FILTER_SUSTAIN stays high so held notes don't die, and the LFO
+                // SUSTAIN stays high so held notes don't die, and the LFO
                 // does all the movement.
                 { "WAVE", 1.0f }, { "PULSE", 0.35f }, { "SUB", 0.40f }, { "SUB_OCT", 0.0f }, { "NOISE", 0.0f },
                 { "HPF", 0.0f }, { "CUTOFF", 1200.0f }, { "RESONANCE", 0.50f }, { "FILTER_TYPE", 1.0f },
-                { "ENV_AMOUNT", 0.2f },
                 { "ATTACK", 0.005f }, { "DECAY", 0.30f }, { "SUSTAIN", 0.80f }, { "RELEASE", 0.30f },
-                { "FILTER_ATTACK", 0.01f }, { "FILTER_DECAY", 0.30f }, { "FILTER_SUSTAIN", 0.60f },
                 { "FILTER_DRIVE", 0.20f }, { "KEYTRACK", 0.30f },
                 { "LFO_RATE", 3.0f }, { "LFO_DEPTH", 0.0f }, { "LFO_FILTER", 0.55f },
                 { "CHORUS", 1.0f }, { "CHORUS_MIX", 0.30f }, { "WIDTH", 0.7f }, { "LEVEL", -4.0f } } },
@@ -1075,13 +1168,14 @@ namespace junoui
             row1.removeFromLeft (gap);
             vcfPanel->setBounds (row1);
 
-            // Row 2: LFO | ENV | FILTER ENV | CHORUS, widths proportional to column count
-            // (LFO 3 cols, ENV 4 cols, FILTER ENV 3 cols -- both grew one control)
-            const float totalCols = 6.0f + 4.0f + 6.0f + 4.0f;
+            // Row 2: LFO | ENV | MOD ENV | CHORUS, widths proportional to column count
+            // (MOD ENV shrank to 3 cols now that it only holds the pitch mod
+            // envelope -- the filter ADSR moved to the drawable Mod Shape)
+            const float totalCols = 6.0f + 4.0f + 3.0f + 4.0f;
             const int availW = row2.getWidth() - gap * 3;
             const int lfoW = (int) (availW * (6.0f / totalCols));
             const int envW = (int) (availW * (4.0f / totalCols));
-            const int fenvW = (int) (availW * (6.0f / totalCols));
+            const int fenvW = (int) (availW * (3.0f / totalCols));
             lfoPanel->setBounds (row2.removeFromLeft (lfoW));
             row2.removeFromLeft (gap);
             envPanel->setBounds (row2.removeFromLeft (envW));
@@ -1176,7 +1270,8 @@ namespace junoui
             addClassicSlider (*dcoPanel, "SUB", "SUB");
             addSelector (*dcoPanel, "SUB_OCT", { "-1 OCT", "-2 OCT" }, "OCT");
             addClassicSlider (*dcoPanel, "NOISE", "NOISE");
-            addClassicSlider (*dcoPanel, "WT_POS", "WT POS");
+            addWaveTabs (*dcoPanel, "WT_POS",
+                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" });
                         addClassicSlider (*dcoPanel, "WT_LEVEL", "WT LVL");
             addClassicSlider (*dcoPanel, "HYBRID", "HYBRID");
 
@@ -1186,7 +1281,8 @@ namespace junoui
             addClassicSlider (*osc2Panel, "OSC2_SEMI", "SEMI");
             addClassicSlider (*osc2Panel, "OSC2_FINE", "FINE");
             addClassicSlider (*osc2Panel, "OSC2_LEVEL", "LEVEL");
-            addClassicSlider (*osc2Panel, "OSC2_WT_POS", "WT POS");
+            addWaveTabs (*osc2Panel, "OSC2_WT_POS",
+                         { "SINE", "TRIANGLE", "SAW", "SQUARE", "SINE 2H", "ORGAN", "FORMANT", "BUZZ SAW" });
             addClassicSlider (*osc2Panel, "FM_AMOUNT", "FM");
 
             vcfPanel = std::make_unique<PanelSection> ("HPF / VCF", accent);
@@ -1195,7 +1291,6 @@ namespace junoui
             addClassicSlider (*vcfPanel, "CUTOFF", "CUTOFF");
             addSelector (*vcfPanel, "FILTER_TYPE", { "JUNO LP24", "LP12", "HP12", "BP12", "NOTCH" }, "TYPE");
             addClassicSlider (*vcfPanel, "RESONANCE", "RESO");
-            addClassicSlider (*vcfPanel, "ENV_AMOUNT", "ENV AMT");
             addClassicSlider (*vcfPanel, "KEYTRACK", "KEY TRK");
             addClassicSlider (*vcfPanel, "VEL_FILTER", "VEL FLT");
             addClassicSlider (*vcfPanel, "FILTER_DRIVE", "DRIVE");
@@ -1215,12 +1310,8 @@ namespace junoui
             addClassicSlider (*envPanel, "SUSTAIN", "SUS");
             addClassicSlider (*envPanel, "RELEASE", "REL");
 
-            fenvPanel = std::make_unique<PanelSection> ("FILTER ENV", accent);
+            fenvPanel = std::make_unique<PanelSection> ("MOD ENV (PITCH)", accent);
             addAndMakeVisible (*fenvPanel);
-            addClassicSlider (*fenvPanel, "FILTER_ATTACK", "F.ATK");
-            addClassicSlider (*fenvPanel, "FILTER_DECAY", "F.DEC");
-            addClassicSlider (*fenvPanel, "FILTER_SUSTAIN", "F.SUS");
-            addClassicSlider (*fenvPanel, "FILTER_RELEASE", "F.REL");
             addClassicSlider (*fenvPanel, "MODENV_ATTACK", "M.ATK");
             addClassicSlider (*fenvPanel, "MODENV_DECAY", "M.DEC");
             addClassicSlider (*fenvPanel, "MODENV_AMOUNT", "M.AMT");

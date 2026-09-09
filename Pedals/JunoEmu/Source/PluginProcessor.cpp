@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "JunoUI.h"
+#include "../../Common/TempoSync.h"
 
 namespace
 {
@@ -50,22 +51,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
     // remaining modes are kept as a modern convenience, using the same stable
     // SVF topology when the user deliberately leaves the classic LP path.
     choice ("FILTER_TYPE", "Filter Type", { "Juno LP 24", "LP 12dB", "HP 12dB", "BP 12dB", "Notch 12dB" }, 0);
-    f ("ENV_AMOUNT", "VCF Env", -1.0f, 1.0f, 0.45f);
     f ("ATTACK", "Attack", 0.001f, 2.0f, 0.008f);
     f ("DECAY", "Decay", 0.005f, 3.0f, 0.22f);
     f ("SUSTAIN", "Sustain", 0.0f, 1.0f, 0.72f);
     f ("RELEASE", "Release", 0.01f, 4.0f, 0.35f);
-    f ("FILTER_ATTACK", "Filter Attack", 0.001f, 2.0f, 0.01f);
-    f ("FILTER_DECAY", "Filter Decay", 0.005f, 3.0f, 0.25f);
-    f ("FILTER_RELEASE", "Filter Release", 0.01f, 4.0f, 0.35f);
-    // Independent filter-envelope sustain: previously the VCF envelope decayed
-    // toward the shared amp SUSTAIN level, so a held note could never let the
-    // filter close all the way down without also killing the amplitude --
-    // exactly the thing that kills a "pluck" (attack + decay to near-silent
-    // cutoff while the note itself keeps sounding). Decoupling it lets a
-    // patch have a percussive filter snap with a sustained amp level, or
-    // vice versa, the way Serum's separate filter-envelope sustain does.
-    f ("FILTER_SUSTAIN", "Filter Sustain", 0.0f, 1.0f, 0.72f);
+    // The old dedicated VCF envelope (attack/decay/sustain/release + a
+    // separate "VCF Env" amount knob) was a second, less flexible way to do
+    // exactly what the drawable FILTER / MOD SHAPE curve already does --
+    // draw any shape, route it to Cutoff, dial in an amount. Removed in
+    // favour of that one modulation source instead of maintaining two.
     f ("LFO_RATE", "LFO Rate", 0.05f, 12.0f, 4.8f);
     f ("LFO_DEPTH", "Vibrato", 0.0f, 1.0f, 0.0f);
     // LFO routed to cutoff (in octaves) -- Serum's mod matrix lets any LFO
@@ -87,6 +81,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout JunoEmuAudioProcessor::creat
         const auto name = "LFO Curve " + juce::String (i + 1);
         f (id.toRawUTF8(), name.toRawUTF8(), 0.0f, 1.0f, initial);
     }
+    // Lets LFO_RATE -- the rate knob on the FILTER / MOD SHAPE panel --
+    // lock to the host tempo instead of running free in Hz.
+    DevKomodoTempoSync::addParameters (p, 4 /* "1/4" */);
     choice ("LFO1_DEST_A", "Curve Destination A",
             { "Off", "Cutoff", "Resonance", "WT Position", "FM Amount", "PWM", "OSC2 Pitch", "OSC1 Pitch", "VCA Level" }, 1);
     f ("LFO1_AMT_A", "Curve Amount A", -1.0f, 1.0f, 0.0f);
@@ -333,7 +330,6 @@ void JunoEmuVoice::startNote (int midiNoteNumber, float noteVelocity, juce::Synt
     driftPhase = random.nextFloat();
     driftValue = random.nextFloat() * 2.0f - 1.0f;
     env = 0.0f;
-    filterEnv = 0.0f;
     std::fill (std::begin (filterL), std::end (filterL), 0.0f);
     std::fill (std::begin (filterR), std::end (filterR), 0.0f);
     hpStateL = 0.0f;
@@ -351,7 +347,6 @@ void JunoEmuVoice::stopNote (float, bool allowTailOff)
     {
         clearCurrentNote();
         env = 0.0f;
-        filterEnv = 0.0f;
     }
 }
 
@@ -408,18 +403,18 @@ float JunoEmuVoice::oscWavetable (float p, float position) const noexcept
     {
         switch (index)
         {
-            case 0: return std::sin (2.0f * pi * phaseWarp);
-            case 1: return 4.0f * std::abs (phaseWarp - 0.5f) - 1.0f;
-            case 2: return 2.0f * phaseWarp - 1.0f;
-            case 3: return phaseWarp < 0.5f ? 1.0f : -1.0f;
-            case 4: return 0.72f * std::sin (2.0f * pi * phaseWarp)
+            case 0: return std::sin (2.0f * pi * phaseWarp);                          // SINE
+            case 1: return 4.0f * std::abs (phaseWarp - 0.5f) - 1.0f;                 // TRIANGLE
+            case 2: return 2.0f * phaseWarp - 1.0f;                                    // SAW
+            case 3: return phaseWarp < 0.5f ? 1.0f : -1.0f;                            // SQUARE
+            case 4: return 0.72f * std::sin (2.0f * pi * phaseWarp)                    // SINE 2H
                          + 0.28f * std::sin (4.0f * pi * phaseWarp);
-            case 5: return 0.58f * std::sin (2.0f * pi * phaseWarp)
+            case 5: return 0.58f * std::sin (2.0f * pi * phaseWarp)                    // ORGAN
                          + 0.30f * std::sin (6.0f * pi * phaseWarp)
                          + 0.12f * std::sin (10.0f * pi * phaseWarp);
-            case 6: return std::sin (2.0f * pi * phaseWarp)
+            case 6: return std::sin (2.0f * pi * phaseWarp)                            // FORMANT
                          * (0.65f + 0.35f * std::sin (2.0f * pi * phaseWarp));
-            default: return 0.65f * (2.0f * phaseWarp - 1.0f)
+            default: return 0.65f * (2.0f * phaseWarp - 1.0f)                          // BUZZ SAW
                          + 0.35f * std::sin (6.0f * pi * phaseWarp);
         }
     };
@@ -512,9 +507,6 @@ void JunoEmuVoice::updateEnvelopeCoefficients()
     envAttack = envCoeff (parameter (s, "ATTACK", 0.008f), sampleRate);
     envDecay = envCoeff (parameter (s, "DECAY", 0.22f), sampleRate);
     envRelease = envCoeff (parameter (s, "RELEASE", 0.35f), sampleRate);
-    filterAttack = envCoeff (parameter (s, "FILTER_ATTACK", 0.01f), sampleRate);
-    filterDecay = envCoeff (parameter (s, "FILTER_DECAY", 0.25f), sampleRate);
-    filterRelease = envCoeff (parameter (s, "FILTER_RELEASE", 0.35f), sampleRate);
     modEnvAttack = envCoeff (parameter (s, "MODENV_ATTACK", 0.02f), sampleRate);
     modEnvDecay = envCoeff (parameter (s, "MODENV_DECAY", 0.35f), sampleRate);
 }
@@ -536,10 +528,11 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
     const float hpf = parameter (s, "HPF", 0.18f);
     const float cutoff = parameter (s, "CUTOFF", 4200.0f);
     const float resonance = parameter (s, "RESONANCE", 0.18f);
-    const float envAmount = parameter (s, "ENV_AMOUNT", 0.45f);
     const float sustain = parameter (s, "SUSTAIN", 0.72f);
-    const float filterSustain = parameter (s, "FILTER_SUSTAIN", 0.72f);
-    const float lfoRate = parameter (s, "LFO_RATE", 4.8f);
+    const bool modShapeSynced = parameter (s, "TEMPOSYNC", 0.0f) > 0.5f;
+    const int modShapeDivIndex = (int) parameter (s, "NOTEDIV", 4.0f);
+    const float lfoRate = DevKomodoTempoSync::resolveHz (processor, parameter (s, "LFO_RATE", 4.8f),
+                                                          modShapeSynced, modShapeDivIndex, 0.05f, 12.0f);
     const float lfoDepth = parameter (s, "LFO_DEPTH", 0.0f);
     const float lfoFilterDepth = parameter (s, "LFO_FILTER", 0.0f);
     const float lfo2Rate = parameter (s, "LFO2_RATE", 1.2f);
@@ -582,11 +575,6 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
             else
                 env = sustain + (env - sustain) * envDecay;
 
-            if (filterEnv < 0.999f)
-                filterEnv = 1.0f - (1.0f - filterEnv) * filterAttack;
-            else
-                filterEnv = filterSustain + (filterEnv - filterSustain) * filterDecay;
-
             if (modEnv < 0.999f)
                 modEnv = 1.0f - (1.0f - modEnv) * modEnvAttack;
             else
@@ -595,8 +583,10 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         else
         {
             env *= envRelease;
-            filterEnv *= filterRelease;
-            modEnv *= filterRelease;
+            // modEnv has no dedicated release stage, so it keeps decaying
+            // with its own coefficient through note-off instead of
+            // (previously) borrowing the removed filter envelope's release.
+            modEnv *= modEnvDecay;
             if (env < 0.00005f)
             {
                 clearCurrentNote();
@@ -707,9 +697,9 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
                  + sub * 0.30f + noise * 0.16f + osc2 * osc2Level * 0.55f) * velocity;
 
         // Serum-style VCF: cutoff modulation is computed in semitone/octave
-        // space (note tracking, velocity and the filter envelope all stack
-        // as exponential multipliers on the base cutoff) exactly as before,
-        // but it now drives a zero-delay-feedback state-variable filter
+        // space (note tracking, velocity, the classic LFOs and the drawable
+        // Mod Shape curve all stack as exponential multipliers on the base
+        // cutoff), and it drives a zero-delay-feedback state-variable filter
         // instead of the old saturating ladder -- so sweeps stay precise
         // and resonance can push all the way to a clean self-oscillation
         // rather than softening into ladder-style compression.
@@ -719,7 +709,7 @@ void JunoEmuVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int 
         const float lfoToCutoffOct = std::sin (2.0f * pi * lfoPhase) * lfoFilterDepth * 2.0f
                                   + std::sin (2.0f * pi * lfo2Phase) * lfo2Depth * 1.5f;
         const float modCutoff = cutoff * noteTracking * velocityTracking
-                              * std::pow (2.0f, envAmount * filterEnv * 2.0f + lfoToCutoffOct + curveCutoffOct);
+                              * std::pow (2.0f, lfoToCutoffOct + curveCutoffOct);
         const float fc = juce::jlimit (25.0f, (float) sampleRate * 0.45f, modCutoff);
 
         // The default is now a dedicated four-pole low-pass instead of the

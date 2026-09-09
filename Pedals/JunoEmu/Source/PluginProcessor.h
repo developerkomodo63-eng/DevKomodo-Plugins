@@ -98,7 +98,6 @@ private:
     float driftPhase = 0.0f;
     float driftValue = 0.0f;
     float env = 0.0f;
-    float filterEnv = 0.0f;
     float currentFreq = 440.0f;
     float targetFreq = 440.0f;
     float filterL[4] {};
@@ -108,9 +107,6 @@ private:
     float envAttack = 0.0f;
     float envDecay = 0.0f;
     float envRelease = 0.0f;
-    float filterAttack = 0.0f;
-    float filterDecay = 0.0f;
-    float filterRelease = 0.0f;
     float modEnvAttack = 0.0f;
     float modEnvDecay = 0.0f;
     bool releasing = false;
